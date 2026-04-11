@@ -1,15 +1,25 @@
 #!/usr/bin/env node
 // Standalone script that runs outside Next.js bundler
-// Called by the API route via child_process.execFile
-// Receives: bankId, rut, password as argv
+// Called by the API route via child_process.spawn
+// Receives: bankId as argv[2], credentials via stdin as JSON
 // Outputs: JSON result to stdout
 
 import { getBank } from "open-banking-chile";
 
-const [,, bankId, rut, password] = process.argv;
+const bankId = process.argv[2];
 
-if (!bankId || !rut || !password) {
-  console.error(JSON.stringify({ success: false, error: "Missing arguments" }));
+if (!bankId) {
+  console.log(JSON.stringify({ success: false, error: "Missing bankId argument" }));
+  process.exit(1);
+}
+
+// Read credentials from stdin (safer than argv — not visible in ps)
+const chunks = [];
+for await (const chunk of process.stdin) chunks.push(chunk);
+const { rut, password } = JSON.parse(Buffer.concat(chunks).toString());
+
+if (!rut || !password) {
+  console.log(JSON.stringify({ success: false, error: "Missing credentials on stdin" }));
   process.exit(1);
 }
 
@@ -21,7 +31,6 @@ try {
   }
 
   const result = await bank.scrape({ rut, password });
-  // Output only the data we need (strip debug/internal fields)
   const output = {
     success: result.success,
     bank: result.bank,

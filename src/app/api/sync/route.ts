@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { execFile } from "child_process";
+import { spawn } from "child_process";
 import path from "path";
 
 // Category keyword mapping for auto-categorization
@@ -24,16 +24,29 @@ function guessCategory(description: string): string {
   return "Otro";
 }
 
-function runScraper(bankId: string, rut: string, password: string): Promise<{ success: boolean; error?: string; bank?: string; accounts?: Array<{ label?: string; balance?: number; movements: Array<{ date: string; description: string; amount: number }> }>; creditCards?: Array<{ label?: string; national?: { used?: number }; movements: Array<{ date: string; description: string; amount: number }> }> }> {
+type ScrapeResult = { success: boolean; error?: string; bank?: string; accounts?: Array<{ label?: string; balance?: number; movements: Array<{ date: string; description: string; amount: number }> }>; creditCards?: Array<{ label?: string; national?: { used?: number }; movements: Array<{ date: string; description: string; amount: number }> }> };
+
+function runScraper(bankId: string, rut: string, password: string): Promise<ScrapeResult> {
   return new Promise((resolve, reject) => {
     const scriptPath = path.join(process.cwd(), "scripts", "sync-bank.mjs");
-    execFile("node", [scriptPath, bankId, rut, password], { timeout: 180000 }, (error, stdout, stderr) => {
-      if (error) {
-        reject(new Error(stderr || error.message));
+    // Pass only bankId as argv, credentials via stdin (not visible in ps)
+    const child = spawn("node", [scriptPath, bankId], { timeout: 180000 });
+
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (d: Buffer) => { stdout += d.toString(); });
+    child.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
+
+    // Write credentials to stdin and close it
+    child.stdin.write(JSON.stringify({ rut, password }));
+    child.stdin.end();
+
+    child.on("close", (code) => {
+      if (code !== 0 && !stdout.trim()) {
+        reject(new Error(stderr || `Process exited with code ${code}`));
         return;
       }
       try {
-        // stdout may have multiple lines, take the last non-empty one (the JSON)
         const lines = stdout.trim().split("\n");
         const jsonLine = lines[lines.length - 1];
         resolve(JSON.parse(jsonLine));

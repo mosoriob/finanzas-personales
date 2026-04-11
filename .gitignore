@@ -12,4 +12,5 @@ data/
 prisma/dev.db
 prisma/dev.db-journal
 
+tsconfig.tsbuildinfo
 /src/generated/prisma
