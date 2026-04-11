@@ -1,0 +1,42 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Account {
+  id           Int           @id @default(autoincrement())
+  name         String
+  type         String
+  bank         String
+  balance      Int
+  color        String        @default("#6366f1")
+  createdAt    DateTime      @default(now())
+  transactions Transaction[]
+}
+
+model Category {
+  id           Int           @id @default(autoincrement())
+  name         String        @unique
+  emoji        String        @default("📌")
+  transactions Transaction[]
+}
+
+model Transaction {
+  id          Int      @id @default(autoincrement())
+  date        DateTime
+  description String
+  amount      Int
+  accountId   Int
+  categoryId  Int
+  account     Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  category    Category @relation(fields: [categoryId], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@index([accountId])
+  @@index([categoryId])
+  @@index([date])
+}

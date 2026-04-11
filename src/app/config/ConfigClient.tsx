@@ -1,0 +1,671 @@
+"use client";
+
+import { useState, useRef } from "react";
+import { createAccount, deleteAccount, createCategory } from "./actions";
+
+const BANKS = [
+  "Banco de Chile",
+  "BancoEstado",
+  "Santander",
+  "BCI",
+  "Scotiabank",
+  "Itaú",
+  "Otro",
+];
+
+const ACCOUNT_TYPES = [
+  "Cuenta corriente",
+  "Cuenta vista / RUT",
+  "Tarjeta de crédito",
+];
+
+const COLOR_SWATCHES = [
+  "#6366f1",
+  "#a78bfa",
+  "#38a169",
+  "#3b82f6",
+  "#f59e0b",
+  "#ef4444",
+];
+
+type Tab = "cuentas" | "categorias" | "bancos";
+
+interface Account {
+  id: number;
+  name: string;
+  bank: string;
+  type: string;
+  color: string;
+}
+
+interface Category {
+  id: number;
+  name: string;
+  emoji: string;
+  _count: { transactions: number };
+}
+
+interface Props {
+  accounts: Account[];
+  categories: Category[];
+}
+
+export function ConfigClient({ accounts, categories }: Props) {
+  const [activeTab, setActiveTab] = useState<Tab>("bancos");
+  const [selectedColor, setSelectedColor] = useState(COLOR_SWATCHES[0]);
+  const [showAccountForm, setShowAccountForm] = useState(false);
+  const [isPending, setIsPending] = useState(false);
+  const accountFormRef = useRef<HTMLFormElement>(null);
+  const categoryFormRef = useRef<HTMLFormElement>(null);
+
+  async function handleCreateAccount(formData: FormData) {
+    formData.set("color", selectedColor);
+    setIsPending(true);
+    try {
+      await createAccount(formData);
+      accountFormRef.current?.reset();
+      setSelectedColor(COLOR_SWATCHES[0]);
+      setShowAccountForm(false);
+    } finally {
+      setIsPending(false);
+    }
+  }
+
+  async function handleDeleteAccount(id: number) {
+    setIsPending(true);
+    try {
+      await deleteAccount(id);
+    } finally {
+      setIsPending(false);
+    }
+  }
+
+  async function handleCreateCategory(formData: FormData) {
+    setIsPending(true);
+    try {
+      await createCategory(formData);
+      categoryFormRef.current?.reset();
+    } finally {
+      setIsPending(false);
+    }
+  }
+
+  return (
+    <div className="flex gap-6 min-h-[500px]">
+      {/* Left sidebar */}
+      <aside className="w-[220px] flex-shrink-0">
+        <div className="bg-white rounded-2xl border border-gray-100 p-3 flex flex-col gap-1">
+          {(["bancos", "cuentas", "categorias"] as Tab[]).map((tab) => {
+            const labels: Record<Tab, string> = { bancos: "Conectar banco", cuentas: "Cuentas", categorias: "Categorías" };
+            return (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                  activeTab === tab
+                    ? "bg-indigo-50 text-indigo-500 font-semibold"
+                    : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                }`}
+              >
+                {labels[tab]}
+              </button>
+            );
+          })}
+        </div>
+      </aside>
+
+      {/* Right panel */}
+      <div className="flex-1 min-w-0">
+        {activeTab === "bancos" ? (
+          <BancosPanel />
+        ) : activeTab === "cuentas" ? (
+          <CuentasPanel
+            accounts={accounts}
+            showForm={showAccountForm}
+            setShowForm={setShowAccountForm}
+            selectedColor={selectedColor}
+            setSelectedColor={setSelectedColor}
+            formRef={accountFormRef}
+            isPending={isPending}
+            onCreateAccount={handleCreateAccount}
+            onDeleteAccount={handleDeleteAccount}
+          />
+        ) : (
+          <CategoriasPanel
+            categories={categories}
+            formRef={categoryFormRef}
+            isPending={isPending}
+            onCreateCategory={handleCreateCategory}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Cuentas Panel ─── */
+
+interface CuentasPanelProps {
+  accounts: Account[];
+  showForm: boolean;
+  setShowForm: (v: boolean) => void;
+  selectedColor: string;
+  setSelectedColor: (c: string) => void;
+  formRef: React.RefObject<HTMLFormElement | null>;
+  isPending: boolean;
+  onCreateAccount: (formData: FormData) => Promise<void>;
+  onDeleteAccount: (id: number) => Promise<void>;
+}
+
+function CuentasPanel({
+  accounts,
+  showForm,
+  setShowForm,
+  selectedColor,
+  setSelectedColor,
+  formRef,
+  isPending,
+  onCreateAccount,
+  onDeleteAccount,
+}: CuentasPanelProps) {
+  return (
+    <div className="flex flex-col gap-5">
+      {/* Header */}
+      <div className="flex items-start justify-between">
+        <div>
+          <h2 className="text-xl font-semibold text-gray-800">Cuentas</h2>
+          <p className="text-sm text-gray-400 mt-0.5">
+            Gestiona tus cuentas bancarias y tarjetas
+          </p>
+        </div>
+        {!showForm && (
+          <button
+            onClick={() => setShowForm(true)}
+            className="bg-indigo-500 text-white rounded-xl px-5 py-2 text-sm font-semibold hover:bg-indigo-600 transition-colors"
+          >
+            + Agregar cuenta
+          </button>
+        )}
+      </div>
+
+      {/* Add account form */}
+      {showForm && (
+        <div className="bg-white rounded-2xl border border-gray-100 p-5">
+          <h3 className="text-sm font-semibold text-gray-700 mb-4">
+            Agregar cuenta
+          </h3>
+          <form
+            ref={formRef}
+            action={onCreateAccount}
+            className="flex flex-col gap-3.5"
+          >
+            {/* Name */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                Nombre
+              </label>
+              <input
+                name="name"
+                type="text"
+                placeholder="Ej. Cuenta corriente personal"
+                required
+                className="border border-indigo-100 rounded-xl p-2.5 text-sm text-gray-700 placeholder-gray-300 focus:outline-none focus:border-violet-400 transition-colors"
+              />
+            </div>
+
+            {/* Bank */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                Banco
+              </label>
+              <div className="relative">
+                <select
+                  name="bank"
+                  required
+                  defaultValue=""
+                  className="w-full border border-indigo-100 rounded-xl p-2.5 text-sm text-gray-700 focus:outline-none focus:border-violet-400 transition-colors appearance-none bg-white pr-9"
+                >
+                  <option value="" disabled>
+                    Selecciona un banco
+                  </option>
+                  {BANKS.map((b) => (
+                    <option key={b} value={b}>
+                      {b}
+                    </option>
+                  ))}
+                </select>
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 14 14"
+                    fill="none"
+                  >
+                    <path
+                      d="M3 5l4 4 4-4"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </span>
+              </div>
+            </div>
+
+            {/* Type */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                Tipo de cuenta
+              </label>
+              <div className="relative">
+                <select
+                  name="type"
+                  required
+                  defaultValue=""
+                  className="w-full border border-indigo-100 rounded-xl p-2.5 text-sm text-gray-700 focus:outline-none focus:border-violet-400 transition-colors appearance-none bg-white pr-9"
+                >
+                  <option value="" disabled>
+                    Selecciona el tipo
+                  </option>
+                  {ACCOUNT_TYPES.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 14 14"
+                    fill="none"
+                  >
+                    <path
+                      d="M3 5l4 4 4-4"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </span>
+              </div>
+            </div>
+
+            {/* Color picker */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                Color
+              </label>
+              <div className="flex gap-2">
+                {COLOR_SWATCHES.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    onClick={() => setSelectedColor(color)}
+                    style={{ backgroundColor: color }}
+                    className={`w-8 h-8 rounded-lg cursor-pointer transition-all focus:outline-none ${
+                      selectedColor === color
+                        ? "ring-2 ring-offset-2 ring-gray-400 scale-110"
+                        : "hover:scale-105"
+                    }`}
+                    aria-label={`Color ${color}`}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-2.5 pt-1">
+              <button
+                type="submit"
+                disabled={isPending}
+                className="bg-indigo-500 text-white rounded-xl px-6 py-2.5 text-sm font-semibold hover:bg-indigo-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {isPending ? "Guardando…" : "Agregar cuenta"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowForm(false)}
+                className="border border-indigo-100 text-gray-400 rounded-xl px-6 py-2.5 text-sm font-medium hover:bg-gray-50 transition-colors"
+              >
+                Cancelar
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Existing accounts */}
+      <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100">
+          <h3 className="text-sm font-semibold text-gray-700">
+            Cuentas existentes
+          </h3>
+        </div>
+        {accounts.length === 0 ? (
+          <div className="px-5 py-10 text-center text-sm text-gray-400">
+            No hay cuentas registradas aún.
+          </div>
+        ) : (
+          <ul className="divide-y divide-gray-100">
+            {accounts.map((account) => (
+              <li
+                key={account.id}
+                className="flex items-center gap-3 px-5 py-3.5"
+              >
+                {/* Color dot */}
+                <span
+                  className="w-3 h-3 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: account.color }}
+                />
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-800 truncate">
+                    {account.name}
+                  </p>
+                  <p className="text-xs text-gray-400 truncate">
+                    {account.bank} · {account.type}
+                  </p>
+                </div>
+                {/* Actions */}
+                <div className="flex gap-1.5 flex-shrink-0">
+                  <button
+                    onClick={() => handleDeleteAccount(account.id)}
+                    disabled={isPending}
+                    className="text-xs text-red-400 border border-red-100 rounded-lg px-3 py-1.5 hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Eliminar
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+
+  async function handleDeleteAccount(id: number) {
+    await onDeleteAccount(id);
+  }
+}
+
+/* ─── Categorías Panel ─── */
+
+interface CategoriasPanelProps {
+  categories: Category[];
+  formRef: React.RefObject<HTMLFormElement | null>;
+  isPending: boolean;
+  onCreateCategory: (formData: FormData) => Promise<void>;
+}
+
+function CategoriasPanel({
+  categories,
+  formRef,
+  isPending,
+  onCreateCategory,
+}: CategoriasPanelProps) {
+  return (
+    <div className="flex flex-col gap-5">
+      {/* Header */}
+      <div>
+        <h2 className="text-xl font-semibold text-gray-800">Categorías</h2>
+        <p className="text-sm text-gray-400 mt-0.5">
+          Organiza tus transacciones con categorías personalizadas
+        </p>
+      </div>
+
+      {/* Create category form */}
+      <div className="bg-white rounded-2xl border border-gray-100 p-5">
+        <h3 className="text-sm font-semibold text-gray-700 mb-4">
+          Crear categoría
+        </h3>
+        <form
+          ref={formRef}
+          action={onCreateCategory}
+          className="flex gap-3 items-end"
+        >
+          <div className="flex flex-col gap-1.5 flex-1">
+            <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+              Nombre
+            </label>
+            <input
+              name="name"
+              type="text"
+              placeholder="Ej. Supermercado"
+              required
+              className="border border-indigo-100 rounded-xl p-2.5 text-sm text-gray-700 placeholder-gray-300 focus:outline-none focus:border-violet-400 transition-colors"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5 w-24">
+            <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+              Emoji
+            </label>
+            <input
+              name="emoji"
+              type="text"
+              placeholder="📌"
+              maxLength={4}
+              className="border border-indigo-100 rounded-xl p-2.5 text-sm text-gray-700 placeholder-gray-300 focus:outline-none focus:border-violet-400 transition-colors text-center"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={isPending}
+            className="bg-indigo-500 text-white rounded-xl px-6 py-2.5 text-sm font-semibold hover:bg-indigo-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
+          >
+            {isPending ? "Guardando…" : "Crear categoría"}
+          </button>
+        </form>
+      </div>
+
+      {/* Categories grid */}
+      {categories.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-gray-100 px-5 py-10 text-center text-sm text-gray-400">
+          No hay categorías registradas aún.
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3">
+          {categories.map((cat) => (
+            <div
+              key={cat.id}
+              className="bg-[#f8f7ff] rounded-xl p-2.5 flex items-center gap-3"
+            >
+              <span className="text-xl leading-none">{cat.emoji}</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-700 truncate">
+                  {cat.name}
+                </p>
+                <p className="text-xs text-gray-400">
+                  {cat._count.transactions}{" "}
+                  {cat._count.transactions === 1
+                    ? "transacción"
+                    : "transacciones"}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Bancos Panel ─── */
+
+const SUPPORTED_BANKS = [
+  { id: "bestado", name: "BancoEstado (CuentaRUT)", note: "Abrirá una ventana de Chrome" },
+  { id: "bchile", name: "Banco de Chile", note: "" },
+  { id: "santander", name: "Santander", note: "" },
+  { id: "bci", name: "BCI", note: "Requiere BCI Pass en tu celular" },
+  { id: "itau", name: "Itaú", note: "Requiere Itaú Key" },
+  { id: "falabella", name: "Banco Falabella / CMR", note: "" },
+  { id: "scotiabank", name: "Scotiabank", note: "" },
+  { id: "bice", name: "BICE", note: "" },
+  { id: "edwards", name: "Banco Edwards", note: "" },
+];
+
+function BancosPanel() {
+  const [selectedBank, setSelectedBank] = useState("");
+  const [rut, setRut] = useState("");
+  const [password, setPassword] = useState("");
+  const [syncing, setSyncing] = useState(false);
+  const [status, setStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  async function handleSync() {
+    if (!selectedBank || !rut || !password) return;
+    setSyncing(true);
+    setStatus(null);
+
+    try {
+      const res = await fetch("/api/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bankId: selectedBank, rut, password }),
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        setStatus({
+          type: "success",
+          message: `Sincronización exitosa: ${data.imported} transacciones importadas${data.skipped > 0 ? `, ${data.skipped} duplicadas omitidas` : ""}.`,
+        });
+        setPassword("");
+      } else {
+        setStatus({ type: "error", message: data.error || "Error desconocido" });
+      }
+    } catch {
+      setStatus({ type: "error", message: "Error de conexión. Intenta de nuevo." });
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  const bankInfo = SUPPORTED_BANKS.find((b) => b.id === selectedBank);
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div>
+        <h2 className="text-xl font-semibold text-gray-800">Conectar banco</h2>
+        <p className="text-sm text-gray-400 mt-0.5">
+          Sincroniza tus movimientos reales desde tu banco
+        </p>
+      </div>
+
+      {/* Info box */}
+      <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex gap-3">
+        <span className="text-lg">🔒</span>
+        <div className="text-sm text-amber-800">
+          <p className="font-medium">Tus credenciales son seguras</p>
+          <p className="text-amber-600 mt-0.5">
+            La conexión se hace directamente desde tu computador al portal del banco.
+            Tus datos nunca salen de esta máquina.
+          </p>
+        </div>
+      </div>
+
+      {/* Sync form */}
+      <div className="bg-white rounded-2xl border border-gray-100 p-5 flex flex-col gap-4">
+        <h3 className="text-sm font-semibold text-gray-700">Datos de acceso</h3>
+
+        {/* Bank select */}
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+            Banco
+          </label>
+          <div className="relative">
+            <select
+              value={selectedBank}
+              onChange={(e) => setSelectedBank(e.target.value)}
+              className="w-full border border-indigo-100 rounded-xl p-2.5 text-sm text-gray-700 focus:outline-none focus:border-violet-400 transition-colors appearance-none bg-white pr-9"
+            >
+              <option value="">Selecciona tu banco</option>
+              {SUPPORTED_BANKS.map((b) => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
+            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path d="M3 5l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </span>
+          </div>
+          {bankInfo?.note && (
+            <p className="text-xs text-gray-400 mt-0.5">ℹ️ {bankInfo.note}</p>
+          )}
+        </div>
+
+        {/* RUT */}
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+            RUT
+          </label>
+          <input
+            type="password"
+            value={rut}
+            onChange={(e) => setRut(e.target.value)}
+            placeholder="12.345.678-9"
+            className="border border-indigo-100 rounded-xl p-2.5 text-sm text-gray-700 placeholder-gray-300 focus:outline-none focus:border-violet-400 transition-colors"
+          />
+        </div>
+
+        {/* Password */}
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+            Clave internet
+          </label>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Tu clave de banca en línea"
+            className="border border-indigo-100 rounded-xl p-2.5 text-sm text-gray-700 placeholder-gray-300 focus:outline-none focus:border-violet-400 transition-colors"
+          />
+        </div>
+
+        {/* Submit */}
+        <button
+          onClick={handleSync}
+          disabled={syncing || !selectedBank || !rut || !password}
+          className="bg-indigo-500 text-white rounded-xl px-6 py-3 text-sm font-semibold hover:bg-indigo-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-1"
+        >
+          {syncing ? (
+            <>
+              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              Conectando con el banco...
+            </>
+          ) : (
+            "Sincronizar movimientos"
+          )}
+        </button>
+
+        {syncing && (
+          <p className="text-xs text-gray-400 text-center">
+            Esto puede tomar 30-60 segundos. Se abrirá una ventana de Chrome.
+            {selectedBank === "bci" || selectedBank === "itau" ? " Aprueba la verificación en tu celular." : ""}
+          </p>
+        )}
+      </div>
+
+      {/* Status message */}
+      {status && (
+        <div
+          className={`rounded-2xl p-4 text-sm flex gap-3 ${
+            status.type === "success"
+              ? "bg-green-50 border border-green-200 text-green-800"
+              : "bg-red-50 border border-red-200 text-red-800"
+          }`}
+        >
+          <span className="text-lg">{status.type === "success" ? "✅" : "❌"}</span>
+          <span>{status.message}</span>
+        </div>
+      )}
+    </div>
+  );
+}

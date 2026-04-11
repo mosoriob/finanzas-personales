@@ -7,3 +7,9 @@ dist/
 .vercel
 *.log
 .DS_Store
+.superpowers/
+data/
+prisma/dev.db
+prisma/dev.db-journal
+
+/src/generated/prisma
