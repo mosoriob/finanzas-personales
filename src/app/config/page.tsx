@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/db";
 import { ConfigClient } from "./ConfigClient";
 
+export const dynamic = "force-dynamic";
+
 export default async function ConfigPage() {
   const [accounts, categories] = await Promise.all([
     prisma.account.findMany({

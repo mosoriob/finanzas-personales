@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { spawn } from "child_process";
-import path from "path";
 
 // Category keyword mapping for auto-categorization
 const CATEGORY_RULES: [RegExp, string][] = [
@@ -28,7 +27,14 @@ type ScrapeResult = { success: boolean; error?: string; bank?: string; accounts?
 
 function runScraper(bankId: string, rut: string, password: string): Promise<ScrapeResult> {
   return new Promise((resolve, reject) => {
-    const scriptPath = path.join(process.cwd(), "scripts", "sync-bank.mjs");
+    // Resolved from the environment (not a build-time literal) so the
+    // bundler treats the sidecar script as a runtime resource, not a
+    // module to trace. Set in the Docker image and .env for local dev.
+    const scriptPath = process.env.SYNC_SCRIPT_PATH;
+    if (!scriptPath) {
+      reject(new Error("SYNC_SCRIPT_PATH is not configured"));
+      return;
+    }
     // Pass only bankId as argv, credentials via stdin (not visible in ps)
     const child = spawn("node", [scriptPath, bankId], { timeout: 180000 });
 
