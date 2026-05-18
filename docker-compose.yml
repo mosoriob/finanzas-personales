@@ -1,0 +1,22 @@
+services:
+  web:
+    build: .
+    image: finanzas-personales:local
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      # Overrides the relative DATABASE_URL from .env so it resolves to the
+      # mounted file inside the container (env > env_file in compose).
+      DATABASE_URL: "file:/app/prisma/dev.db"
+      NODE_ENV: production
+    volumes:
+      # Persist only the SQLite database file. The host file must already
+      # exist (the repo ships a seeded prisma/dev.db); a missing path makes
+      # Docker create a directory and breaks SQLite.
+      - ./prisma/dev.db:/app/prisma/dev.db
+    # Apply migrations before starting (schema.prisma + migrations stay in
+    # the image; only the .db file is mounted).
+    command: sh -c "npx prisma migrate deploy && npm run start"
+    restart: unless-stopped

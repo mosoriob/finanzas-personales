@@ -139,12 +139,11 @@ const DONUT_PALETTE = [
 function DonutChart({ segments }: { segments: { name: string; emoji: string; total: number; pct: number }[] }) {
   if (segments.length === 0) return <p className="text-sm text-gray-400">Sin datos</p>;
 
-  // Build conic-gradient stops
-  let cumulative = 0;
+  // Build conic-gradient stops using prefix sums (no post-render mutation)
   const stops = segments.map((s, i) => {
-    const start = cumulative;
-    cumulative += s.pct;
-    return `${DONUT_PALETTE[i % DONUT_PALETTE.length]} ${start.toFixed(2)}% ${cumulative.toFixed(2)}%`;
+    const start = segments.slice(0, i).reduce((acc, seg) => acc + seg.pct, 0);
+    const end = start + s.pct;
+    return `${DONUT_PALETTE[i % DONUT_PALETTE.length]} ${start.toFixed(2)}% ${end.toFixed(2)}%`;
   });
   const gradient = `conic-gradient(${stops.join(", ")})`;
 
