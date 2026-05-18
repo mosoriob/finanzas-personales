@@ -12,11 +12,15 @@ services:
       DATABASE_URL: "file:/app/prisma/dev.db"
       NODE_ENV: production
     volumes:
-      # Persist only the SQLite database file. The host file must already
-      # exist (the repo ships a seeded prisma/dev.db); a missing path makes
-      # Docker create a directory and breaks SQLite.
-      - ./prisma/dev.db:/app/prisma/dev.db
+      # Named volume on the whole prisma dir. On first run Docker seeds it
+      # from the image (schema.prisma + migrations), then the SQLite db
+      # persists across restarts. Avoids the single-file bind-mount pitfall
+      # where a missing host path becomes a directory and breaks SQLite.
+      - finanzas-db:/app/prisma
     # Apply migrations before starting (schema.prisma + migrations stay in
     # the image; only the .db file is mounted).
     command: sh -c "npx prisma migrate deploy && npm run start"
     restart: unless-stopped
+
+volumes:
+  finanzas-db:
