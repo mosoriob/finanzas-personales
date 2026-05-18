@@ -2,6 +2,8 @@ import { prisma } from "@/lib/db";
 import { formatCLP } from "@/lib/format";
 import { SpendingHeatmap, DailySpend } from "@/components/spending-heatmap";
 
+export const dynamic = "force-dynamic";
+
 // ─── helpers ───────────────────────────────────────────────────────────────
 
 const MONTH_ES = [

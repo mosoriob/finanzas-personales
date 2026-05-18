@@ -32,11 +32,14 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV DATABASE_URL="file:/app/prisma/dev.db"
+# Absolute path to the sidecar scraper spawned by the /api/sync route.
+ENV SYNC_SCRIPT_PATH=/app/scripts/sync-bank.mjs
 
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/next.config.ts ./next.config.ts
 
