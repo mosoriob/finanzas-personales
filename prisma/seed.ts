@@ -16,6 +16,19 @@ async function main() {
     { name: "Sueldo", emoji: "💰" },
     { name: "Transferencia", emoji: "🔄" },
     { name: "Otro", emoji: "📌" },
+    { name: "Alimento", emoji: "🍽️" },
+    { name: "Café", emoji: "☕" },
+    { name: "Mascotas", emoji: "🐾" },
+    { name: "Vivienda", emoji: "🏡" },
+    { name: "Servicios Básicos", emoji: "💡" },
+    { name: "Suscripciones", emoji: "📺" },
+    { name: "Ropa y Calzado", emoji: "👟" },
+    { name: "Deporte", emoji: "🏋️" },
+    { name: "Regalos", emoji: "🎁" },
+    { name: "Viajes", emoji: "✈️" },
+    { name: "Impuestos", emoji: "🧾" },
+    { name: "Comisiones Bancarias", emoji: "🏦" },
+    { name: "Donaciones", emoji: "💝" },
   ];
 
   for (const cat of categories) {
