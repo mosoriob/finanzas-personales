@@ -4,7 +4,7 @@ import { useState, useMemo, useOptimistic, useTransition, useEffect } from "reac
 import { useRouter } from "next/navigation";
 import { formatCLP } from "@/lib/format";
 import { CategoryPicker } from "@/components/CategoryPicker";
-import { updateTransactionCategory } from "./actions";
+import { updateTransactionCategory, updateSharedFlags } from "./actions";
 
 type Account = {
   id: number;
@@ -22,6 +22,8 @@ type Transaction = {
   date: string; // ISO string (serialized from Date)
   description: string;
   amount: number;
+  isShared: boolean;
+  isReimbursed: boolean;
   account: Account;
   category: Category;
 };
@@ -79,6 +81,8 @@ function SearchIcon() {
   );
 }
 
+type SharedFilter = "todos" | "familiares" | "no-familiares";
+
 interface Props {
   transactions: Transaction[];
   accounts: Account[];
@@ -87,16 +91,20 @@ interface Props {
 
 export function TransaccionesClient({ transactions, accounts, categories }: Props) {
   const router = useRouter();
-  const [, startTransition] = useTransition();
+  const [, startCategoryTransition] = useTransition();
+  const [, startSharedTransition] = useTransition();
+
+  const [localTransactions, setLocalTransactions] = useState<Transaction[]>(transactions);
 
   const [search, setSearch] = useState("");
   const [accountFilter, setAccountFilter] = useState<string>("todas");
   const [categoryFilter, setCategoryFilter] = useState<string>("todas");
+  const [sharedFilter, setSharedFilter] = useState<SharedFilter>("todos");
   const [openPickerForTxId, setOpenPickerForTxId] = useState<number | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   const [optimisticTransactions, applyOptimistic] = useOptimistic(
-    transactions,
+    localTransactions,
     (state, update: { txId: number; category: Category }) =>
       state.map((t) =>
         t.id === update.txId ? { ...t, category: { ...update.category } } : t,
@@ -112,19 +120,60 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
 
   function handleSelect(txId: number, newCategoryId: number) {
     setOpenPickerForTxId(null);
-    const current = transactions.find((t) => t.id === txId);
+    const current = localTransactions.find((t) => t.id === txId);
     if (!current || current.category.id === newCategoryId) return; // no-op
 
     const newCategory = categories.find((c) => c.id === newCategoryId);
     if (!newCategory) return;
 
-    startTransition(async () => {
+    startCategoryTransition(async () => {
       applyOptimistic({ txId, category: newCategory });
       const result = await updateTransactionCategory(txId, newCategoryId);
       if (result.ok) {
         router.refresh();
       } else {
         setToast("No se pudo cambiar la categoría");
+      }
+    });
+  }
+
+  function handleSharedToggle(txId: number, field: "isShared" | "isReimbursed") {
+    const current = localTransactions.find((t) => t.id === txId);
+    if (!current) return;
+
+    const prevState = { isShared: current.isShared, isReimbursed: current.isReimbursed };
+
+    let newIsShared = current.isShared;
+    let newIsReimbursed = current.isReimbursed;
+
+    if (field === "isShared") {
+      newIsShared = !current.isShared;
+      if (!newIsShared) newIsReimbursed = false; // enforce invariant
+    } else {
+      if (!current.isShared) return; // disabled — do nothing
+      newIsReimbursed = !current.isReimbursed;
+    }
+
+    // Optimistic update
+    setLocalTransactions((prev) =>
+      prev.map((t) =>
+        t.id === txId ? { ...t, isShared: newIsShared, isReimbursed: newIsReimbursed } : t,
+      ),
+    );
+
+    startSharedTransition(async () => {
+      try {
+        await updateSharedFlags(txId, newIsShared, newIsReimbursed);
+      } catch (err) {
+        console.error("No se pudo actualizar el estado compartido:", err);
+        // Revert optimistic update
+        setLocalTransactions((prev) =>
+          prev.map((t) =>
+            t.id === txId
+              ? { ...t, isShared: prevState.isShared, isReimbursed: prevState.isReimbursed }
+              : t,
+          ),
+        );
       }
     });
   }
@@ -139,9 +188,11 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
       }
       if (accountFilter !== "todas" && t.account.name !== accountFilter) return false;
       if (categoryFilter !== "todas" && t.category.name !== categoryFilter) return false;
+      if (sharedFilter === "familiares" && !t.isShared) return false;
+      if (sharedFilter === "no-familiares" && t.isShared) return false;
       return true;
     });
-  }, [optimisticTransactions, search, accountFilter, categoryFilter]);
+  }, [optimisticTransactions, search, accountFilter, categoryFilter, sharedFilter]);
 
   const totalCount = filtered.length;
   const totalExpenses = filtered
@@ -150,9 +201,15 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
   const totalIncome = filtered
     .filter((t) => t.amount > 0)
     .reduce((acc, t) => acc + t.amount, 0);
+  const totalPendingReimbursement = filtered
+    .filter((t) => t.isShared && !t.isReimbursed && t.amount < 0)
+    .reduce((acc, t) => acc + Math.abs(t.amount), 0);
 
   const hasActiveFilters =
-    search.trim() !== "" || accountFilter !== "todas" || categoryFilter !== "todas";
+    search.trim() !== "" ||
+    accountFilter !== "todas" ||
+    categoryFilter !== "todas" ||
+    sharedFilter !== "todos";
 
   return (
     <div className="flex flex-col gap-6">
@@ -164,7 +221,7 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
       )}
 
       {/* Summary bar */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-4 gap-4">
         <div className="bg-[#f9f9f9] rounded-[20px] p-7">
           <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">
             Transacciones
@@ -185,6 +242,14 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
           </p>
           <p className="text-3xl font-semibold text-green-500">
             {formatCLP(totalIncome)}
+          </p>
+        </div>
+        <div className="bg-[#f9f9f9] rounded-[20px] p-7">
+          <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">
+            Pendiente Devolución
+          </p>
+          <p className="text-3xl font-semibold text-orange-500">
+            {formatCLP(totalPendingReimbursement)}
           </p>
         </div>
       </div>
@@ -247,6 +312,21 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
           ))}
         </select>
 
+        {/* Shared filter */}
+        <select
+          value={sharedFilter}
+          onChange={(e) => setSharedFilter(e.target.value as SharedFilter)}
+          className={`border rounded-full text-sm px-4 py-2 outline-none cursor-pointer transition-colors ${
+            sharedFilter !== "todos"
+              ? "bg-indigo-50 border-violet-300 text-indigo-500"
+              : "bg-white border-indigo-100 text-gray-500 hover:border-indigo-200"
+          }`}
+        >
+          <option value="todos">Todos los gastos</option>
+          <option value="familiares">Familiares</option>
+          <option value="no-familiares">No familiares</option>
+        </select>
+
         {/* Active filter pills */}
         {hasActiveFilters && (
           <div className="flex flex-wrap gap-2">
@@ -283,6 +363,17 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
                 </button>
               </span>
             )}
+            {sharedFilter !== "todos" && (
+              <span className="flex items-center gap-1.5 bg-indigo-50 border border-violet-300 text-indigo-500 rounded-full text-sm px-3 py-1">
+                {sharedFilter === "familiares" ? "Familiares" : "No familiares"}
+                <button
+                  onClick={() => setSharedFilter("todos")}
+                  className="hover:text-indigo-700 transition-colors leading-none"
+                >
+                  ✕
+                </button>
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -299,6 +390,7 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
                   setSearch("");
                   setAccountFilter("todas");
                   setCategoryFilter("todas");
+                  setSharedFilter("todos");
                 }}
                 className="text-xs text-indigo-400 hover:text-indigo-600 transition-colors underline underline-offset-2"
               >
@@ -318,6 +410,12 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
                 </th>
                 <th className="text-left text-xs font-medium text-gray-400 uppercase tracking-wider pb-3 pr-4 w-[160px]">
                   Categoría
+                </th>
+                <th className="text-center text-xs font-medium text-gray-400 uppercase tracking-wider pb-3 pr-4 w-[80px]">
+                  Familiar
+                </th>
+                <th className="text-center text-xs font-medium text-gray-400 uppercase tracking-wider pb-3 pr-4 w-[80px]">
+                  Devuelto
                 </th>
                 <th className="text-right text-xs font-medium text-gray-400 uppercase tracking-wider pb-3 w-[140px]">
                   Monto
@@ -370,6 +468,23 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
                           />
                         )}
                       </span>
+                    </td>
+                    <td className="py-3 pr-4 text-center">
+                      <input
+                        type="checkbox"
+                        checked={t.isShared}
+                        onChange={() => handleSharedToggle(t.id, "isShared")}
+                        className="h-4 w-4 cursor-pointer accent-indigo-500"
+                      />
+                    </td>
+                    <td className="py-3 pr-4 text-center">
+                      <input
+                        type="checkbox"
+                        checked={t.isReimbursed}
+                        onChange={() => handleSharedToggle(t.id, "isReimbursed")}
+                        disabled={!t.isShared}
+                        className="h-4 w-4 cursor-pointer accent-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed"
+                      />
                     </td>
                     <td className="py-3 text-right text-sm font-semibold tabular-nums">
                       <span
