@@ -31,3 +31,18 @@ export async function updateTransactionCategory(
   revalidatePath("/"); // dashboard donut depends on categories
   return { ok: true };
 }
+
+export async function updateSharedFlags(
+  id: number,
+  isShared: boolean,
+  isReimbursed: boolean,
+): Promise<void> {
+  const normalizedReimbursed = isShared ? isReimbursed : false;
+
+  await prisma.transaction.update({
+    where: { id },
+    data: { isShared, isReimbursed: normalizedReimbursed },
+  });
+
+  revalidatePath("/transacciones");
+}
