@@ -9,6 +9,9 @@
     "lint": "eslint",
     "vercel-build": "prisma generate && prisma db push && prisma db seed && next build"
   },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
   "dependencies": {
     "@prisma/client": "^6.19.3",
     "better-sqlite3": "^12.8.0",
@@ -28,6 +31,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.3",
     "tailwindcss": "^4",
+    "tsx": "^4.22.3",
     "typescript": "^5"
   }
 }
