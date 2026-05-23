@@ -1,7 +1,10 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useOptimistic, useTransition, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { formatCLP } from "@/lib/format";
+import { CategoryPicker } from "@/components/CategoryPicker";
+import { updateTransactionCategory } from "./actions";
 
 type Account = {
   id: number;
@@ -83,13 +86,52 @@ interface Props {
 }
 
 export function TransaccionesClient({ transactions, accounts, categories }: Props) {
+  const router = useRouter();
+  const [, startTransition] = useTransition();
+
   const [search, setSearch] = useState("");
   const [accountFilter, setAccountFilter] = useState<string>("todas");
   const [categoryFilter, setCategoryFilter] = useState<string>("todas");
+  const [openPickerForTxId, setOpenPickerForTxId] = useState<number | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+
+  const [optimisticTransactions, applyOptimistic] = useOptimistic(
+    transactions,
+    (state, update: { txId: number; category: Category }) =>
+      state.map((t) =>
+        t.id === update.txId ? { ...t, category: { ...update.category } } : t,
+      ),
+  );
+
+  // Auto-dismiss toast after 3000ms
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
+  function handleSelect(txId: number, newCategoryId: number) {
+    setOpenPickerForTxId(null);
+    const current = transactions.find((t) => t.id === txId);
+    if (!current || current.category.id === newCategoryId) return; // no-op
+
+    const newCategory = categories.find((c) => c.id === newCategoryId);
+    if (!newCategory) return;
+
+    startTransition(async () => {
+      applyOptimistic({ txId, category: newCategory });
+      const result = await updateTransactionCategory(txId, newCategoryId);
+      if (result.ok) {
+        router.refresh();
+      } else {
+        setToast("No se pudo cambiar la categoría");
+      }
+    });
+  }
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return transactions.filter((t) => {
+    return optimisticTransactions.filter((t) => {
       if (q) {
         const matchesDesc = t.description.toLowerCase().includes(q);
         const matchesAccount = t.account.name.toLowerCase().includes(q);
@@ -99,7 +141,7 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
       if (categoryFilter !== "todas" && t.category.name !== categoryFilter) return false;
       return true;
     });
-  }, [transactions, search, accountFilter, categoryFilter]);
+  }, [optimisticTransactions, search, accountFilter, categoryFilter]);
 
   const totalCount = filtered.length;
   const totalExpenses = filtered
@@ -114,6 +156,13 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Toast */}
+      {toast && (
+        <div className="fixed top-4 right-4 z-[100] bg-gray-800 text-white text-sm px-4 py-2 rounded-full shadow-lg">
+          {toast}
+        </div>
+      )}
+
       {/* Summary bar */}
       <div className="grid grid-cols-3 gap-4">
         <div className="bg-[#f9f9f9] rounded-[20px] p-7">
@@ -302,7 +351,25 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
                       </div>
                     </td>
                     <td className="py-3 pr-4">
-                      <CategoryBadge name={t.category.name} />
+                      <span className="relative inline-block">
+                        <button
+                          type="button"
+                          onClick={() => setOpenPickerForTxId(t.id)}
+                          className="cursor-pointer rounded-full transition-colors"
+                        >
+                          <CategoryBadge name={t.category.name} />
+                        </button>
+                        {openPickerForTxId === t.id && (
+                          <CategoryPicker
+                            currentCategoryId={t.category.id}
+                            categories={categories}
+                            onSelect={(newCategoryId) =>
+                              handleSelect(t.id, newCategoryId)
+                            }
+                            onClose={() => setOpenPickerForTxId(null)}
+                          />
+                        )}
+                      </span>
                     </td>
                     <td className="py-3 text-right text-sm font-semibold tabular-nums">
                       <span
