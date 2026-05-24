@@ -63,3 +63,63 @@ export async function createCategory(formData: FormData) {
 
   revalidatePath("/config");
 }
+
+export type UpdateCategoryResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+export async function updateCategory(
+  id: number,
+  data: { name: string; emoji: string }
+): Promise<UpdateCategoryResult> {
+  const trimmedName = data.name.trim();
+  if (!trimmedName) return { ok: false, error: "El nombre no puede estar vacío" };
+
+  // Check uniqueness (excluding self)
+  const existing = await prisma.category.findFirst({
+    where: { name: trimmedName, NOT: { id } },
+  });
+  if (existing) return { ok: false, error: "Ya existe una categoría con ese nombre" };
+
+  await prisma.category.update({
+    where: { id },
+    data: { name: trimmedName, emoji: data.emoji.trim() || "📌" },
+  });
+
+  revalidatePath("/config");
+  revalidatePath("/transacciones");
+  return { ok: true };
+}
+
+export type DeleteCategoryResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+export async function deleteCategory(
+  id: number,
+  replacementCategoryId: number
+): Promise<DeleteCategoryResult> {
+  if (id === replacementCategoryId) {
+    return { ok: false, error: "La categoría de reemplazo no puede ser la misma" };
+  }
+
+  const [target, replacement] = await Promise.all([
+    prisma.category.findUnique({ where: { id } }),
+    prisma.category.findUnique({ where: { id: replacementCategoryId } }),
+  ]);
+  if (!target) return { ok: false, error: "Categoría no encontrada" };
+  if (!replacement) return { ok: false, error: "Categoría de reemplazo no encontrada" };
+
+  await prisma.$transaction([
+    prisma.transaction.updateMany({
+      where: { categoryId: id },
+      data: { categoryId: replacementCategoryId },
+    }),
+    prisma.category.delete({ where: { id } }),
+  ]);
+
+  revalidatePath("/config");
+  revalidatePath("/transacciones");
+  revalidatePath("/");
+  return { ok: true };
+}
