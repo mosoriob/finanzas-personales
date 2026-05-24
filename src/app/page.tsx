@@ -224,7 +224,7 @@ export default async function DashboardPage() {
           Gastado en {currentMonthName}
         </p>
         <p
-          className="text-5xl font-bold tracking-tight"
+          className="text-4xl md:text-5xl font-bold tracking-tight"
           style={{ color: "#333" }}
         >
           ${currentExpenses.toLocaleString("es-CL")}

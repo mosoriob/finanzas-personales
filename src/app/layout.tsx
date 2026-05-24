@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { DM_Sans, Caveat } from "next/font/google";
 import "./globals.css";
 import { Nav } from "@/components/nav";
+import { MobileBottomNav } from "@/components/mobile-bottom-nav";
 
 const dmSans = DM_Sans({
   variable: "--font-dm-sans",
@@ -32,9 +33,10 @@ export default function RootLayout({
     <html lang="es" className={`${dmSans.variable} ${caveat.variable}`}>
       <body className="min-h-screen font-[family-name:var(--font-dm-sans)]">
         <Nav />
-        <main className="max-w-[1060px] mx-auto px-10 py-8 pb-20">
+        <main className="max-w-[1060px] mx-auto px-4 md:px-10 py-6 md:py-8 pb-24 md:pb-20">
           {children}
         </main>
+        <MobileBottomNav />
       </body>
     </html>
   );

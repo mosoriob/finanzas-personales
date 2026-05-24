@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { formatCLP } from "@/lib/format";
 import { CategoryPicker } from "@/components/CategoryPicker";
 import { updateTransactionCategory, updateSharedFlags, updateTransactionNote } from "./actions";
+import { TransactionCard } from "@/components/transaction-card";
 
 type Account = {
   id: number;
@@ -264,43 +265,43 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
       )}
 
       {/* Summary bar */}
-      <div className="grid grid-cols-4 gap-4">
-        <div className="bg-[#f9f9f9] rounded-[20px] p-7">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+        <div className="bg-[#f9f9f9] rounded-[20px] p-4 md:p-7">
           <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">
             Transacciones
           </p>
-          <p className="text-3xl font-semibold text-gray-800">{totalCount}</p>
+          <p className="text-2xl md:text-3xl font-semibold text-gray-800">{totalCount}</p>
         </div>
-        <div className="bg-[#f9f9f9] rounded-[20px] p-7">
+        <div className="bg-[#f9f9f9] rounded-[20px] p-4 md:p-7">
           <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">
             Gastos
           </p>
-          <p className="text-3xl font-semibold text-gray-800">
+          <p className="text-2xl md:text-3xl font-semibold text-gray-800">
             {formatCLP(totalExpenses)}
           </p>
         </div>
-        <div className="bg-[#f9f9f9] rounded-[20px] p-7">
+        <div className="bg-[#f9f9f9] rounded-[20px] p-4 md:p-7">
           <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">
             Ingresos
           </p>
-          <p className="text-3xl font-semibold text-green-500">
+          <p className="text-2xl md:text-3xl font-semibold text-green-500">
             {formatCLP(totalIncome)}
           </p>
         </div>
-        <div className="bg-[#f9f9f9] rounded-[20px] p-7">
+        <div className="bg-[#f9f9f9] rounded-[20px] p-4 md:p-7">
           <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">
             Pendiente Devolución
           </p>
-          <p className="text-3xl font-semibold text-orange-500">
+          <p className="text-2xl md:text-3xl font-semibold text-orange-500">
             {formatCLP(totalPendingReimbursement)}
           </p>
         </div>
       </div>
 
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-col md:flex-row md:flex-wrap md:items-center gap-3">
         {/* Search */}
-        <div className="flex items-center gap-2 px-3 py-2 bg-white border border-indigo-100 rounded-xl flex-1 min-w-[200px] max-w-sm focus-within:border-violet-400 transition-colors">
+        <div className="flex items-center gap-2 px-3 py-2 bg-white border border-indigo-100 rounded-xl w-full md:flex-1 md:min-w-[200px] md:max-w-sm focus-within:border-violet-400 transition-colors">
           <SearchIcon />
           <input
             type="text"
@@ -323,7 +324,7 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
         <select
           value={accountFilter}
           onChange={(e) => setAccountFilter(e.target.value)}
-          className={`border rounded-full text-sm px-4 py-2 outline-none cursor-pointer transition-colors ${
+          className={`border rounded-full text-sm px-4 py-2.5 md:py-2 outline-none cursor-pointer transition-colors w-full md:w-auto min-h-[44px] md:min-h-0 ${
             accountFilter !== "todas"
               ? "bg-indigo-50 border-violet-300 text-indigo-500"
               : "bg-white border-indigo-100 text-gray-500 hover:border-indigo-200"
@@ -341,7 +342,7 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
         <select
           value={categoryFilter}
           onChange={(e) => setCategoryFilter(e.target.value)}
-          className={`border rounded-full text-sm px-4 py-2 outline-none cursor-pointer transition-colors ${
+          className={`border rounded-full text-sm px-4 py-2.5 md:py-2 outline-none cursor-pointer transition-colors w-full md:w-auto min-h-[44px] md:min-h-0 ${
             categoryFilter !== "todas"
               ? "bg-indigo-50 border-violet-300 text-indigo-500"
               : "bg-white border-indigo-100 text-gray-500 hover:border-indigo-200"
@@ -359,7 +360,7 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
         <select
           value={sharedFilter}
           onChange={(e) => setSharedFilter(e.target.value as SharedFilter)}
-          className={`border rounded-full text-sm px-4 py-2 outline-none cursor-pointer transition-colors ${
+          className={`border rounded-full text-sm px-4 py-2.5 md:py-2 outline-none cursor-pointer transition-colors w-full md:w-auto min-h-[44px] md:min-h-0 ${
             sharedFilter !== "todos"
               ? "bg-indigo-50 border-violet-300 text-indigo-500"
               : "bg-white border-indigo-100 text-gray-500 hover:border-indigo-200"
@@ -421,8 +422,8 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
         )}
       </div>
 
-      {/* Transaction table */}
-      <div className="bg-[#f9f9f9] rounded-[20px] p-7">
+      {/* Transaction table — desktop only */}
+      <div className="hidden md:block bg-[#f9f9f9] rounded-[20px] p-7">
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-400">
             <span className="text-4xl">🔍</span>
@@ -574,6 +575,52 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
               })}
             </tbody>
           </table>
+        )}
+      </div>
+
+      {/* Transaction cards — mobile only */}
+      <div className="md:hidden bg-[#f9f9f9] rounded-[20px] p-4">
+        {filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-400">
+            <span className="text-4xl">🔍</span>
+            <p className="text-sm font-medium">No se encontraron transacciones</p>
+            {hasActiveFilters && (
+              <button
+                onClick={() => {
+                  setSearch("");
+                  setAccountFilter("todas");
+                  setCategoryFilter("todas");
+                  setSharedFilter("todos");
+                }}
+                className="text-xs text-indigo-400 hover:text-indigo-600 transition-colors underline underline-offset-2"
+              >
+                Limpiar filtros
+              </button>
+            )}
+          </div>
+        ) : (
+          <div>
+            {filtered.map((t) => (
+              <TransactionCard
+                key={t.id}
+                transaction={t}
+                onCategoryClick={() => setOpenPickerForTxId(t.id)}
+              />
+            ))}
+            {/* Category pickers for mobile */}
+            {filtered.map((t) =>
+              openPickerForTxId === t.id ? (
+                <div key={`picker-${t.id}`} className="relative">
+                  <CategoryPicker
+                    currentCategoryId={t.category.id}
+                    categories={categories}
+                    onSelect={(newCategoryId) => handleSelect(t.id, newCategoryId)}
+                    onClose={() => setOpenPickerForTxId(null)}
+                  />
+                </div>
+              ) : null,
+            )}
+          </div>
         )}
       </div>
     </div>
