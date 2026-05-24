@@ -17,6 +17,7 @@ import {
   updateTransactionNote,
 } from './actions';
 import { TransactionCard } from '@/components/transaction-card';
+import { CreateTransactionModal } from '@/components/CreateTransactionModal';
 
 type Account = {
   id: number;
@@ -44,7 +45,8 @@ type Transaction = {
 type OptimisticUpdate =
   | { type: 'category'; txId: number; category: Category }
   | { type: 'shared'; txId: number; isShared: boolean; isReimbursed: boolean }
-  | { type: 'note'; txId: number; note: string | null };
+  | { type: 'note'; txId: number; note: string | null }
+  | { type: 'create'; transaction: Transaction };
 
 const CATEGORY_EMOJI: Record<string, string> = {
   Supermercado: '🛒',
@@ -99,6 +101,20 @@ function SearchIcon() {
   );
 }
 
+function PlusIcon() {
+  return (
+    <svg
+      className="w-5 h-5"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+      strokeWidth={2.5}
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+    </svg>
+  );
+}
+
 type SharedFilter = 'todos' | 'familiares' | 'no-familiares';
 
 interface Props {
@@ -116,6 +132,7 @@ export function TransaccionesClient({
   const [, startCategoryTransition] = useTransition();
   const [, startSharedTransition] = useTransition();
   const [, startNoteTransition] = useTransition();
+  const [, startCreateTransition] = useTransition();
 
   const [search, setSearch] = useState('');
   const [accountFilter, setAccountFilter] = useState<string>('todas');
@@ -131,10 +148,15 @@ export function TransaccionesClient({
   const [editingNoteValue, setEditingNoteValue] = useState<string>('');
   const noteInputRef = useRef<HTMLInputElement>(null);
 
+  const [showCreateModal, setShowCreateModal] = useState(false);
+
   const [optimisticTransactions, applyOptimistic] = useOptimistic(
     transactions,
-    (state, update: OptimisticUpdate) =>
-      state.map((t) => {
+    (state, update: OptimisticUpdate) => {
+      if (update.type === 'create') {
+        return [update.transaction, ...state];
+      }
+      return state.map((t) => {
         if (t.id !== update.txId) return t;
         if (update.type === 'category') {
           return { ...t, category: { ...update.category } };
@@ -147,7 +169,8 @@ export function TransaccionesClient({
           isShared: update.isShared,
           isReimbursed: update.isReimbursed,
         };
-      }),
+      });
+    },
   );
 
   // Auto-dismiss toast after 3000ms
@@ -190,9 +213,9 @@ export function TransaccionesClient({
 
     if (field === 'isShared') {
       newIsShared = !current.isShared;
-      if (!newIsShared) newIsReimbursed = false; // enforce invariant
+      if (!newIsShared) newIsReimbursed = false;
     } else {
-      if (!current.isShared) return; // disabled — do nothing
+      if (!current.isShared) return;
       newIsReimbursed = !current.isReimbursed;
     }
 
@@ -216,7 +239,6 @@ export function TransaccionesClient({
   function openNoteEditor(txId: number, currentNote: string | null) {
     setEditingNoteForTxId(txId);
     setEditingNoteValue(currentNote ?? '');
-    // auto-focus handled by useEffect
   }
 
   function saveNote(txId: number) {
@@ -224,7 +246,7 @@ export function TransaccionesClient({
     setEditingNoteForTxId(null);
 
     const current = transactions.find((t) => t.id === txId);
-    if (!current || (current.note ?? null) === newNote) return; // no-op
+    if (!current || (current.note ?? null) === newNote) return;
 
     startNoteTransition(async () => {
       applyOptimistic({ type: 'note', txId, note: newNote });
@@ -237,12 +259,18 @@ export function TransaccionesClient({
     });
   }
 
-  // Auto-focus the note input when it appears
   useEffect(() => {
     if (editingNoteForTxId !== null) {
       noteInputRef.current?.focus();
     }
   }, [editingNoteForTxId]);
+
+  function handleTransactionCreated(newTransaction: Transaction) {
+    startCreateTransition(async () => {
+      applyOptimistic({ type: 'create', transaction: newTransaction });
+      router.refresh();
+    });
+  }
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -294,6 +322,26 @@ export function TransaccionesClient({
           {toast}
         </div>
       )}
+
+      {/* Create transaction modal */}
+      {showCreateModal && (
+        <CreateTransactionModal
+          accounts={accounts}
+          categories={categories}
+          onClose={() => setShowCreateModal(false)}
+          onCreated={handleTransactionCreated}
+        />
+      )}
+
+      {/* FAB — mobile only, above bottom nav */}
+      <button
+        type="button"
+        onClick={() => setShowCreateModal(true)}
+        className="md:hidden fixed bottom-20 right-4 z-40 w-14 h-14 min-w-[44px] min-h-[44px] rounded-full bg-violet-600 text-white shadow-lg hover:bg-violet-700 active:bg-violet-800 transition-colors flex items-center justify-center"
+        aria-label="Nueva Transacción"
+      >
+        <PlusIcon />
+      </button>
 
       {/* Summary bar */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
@@ -403,6 +451,16 @@ export function TransaccionesClient({
           <option value="familiares">Familiares</option>
           <option value="no-familiares">No familiares</option>
         </select>
+
+        {/* Nueva Transacción — desktop only */}
+        <button
+          type="button"
+          onClick={() => setShowCreateModal(true)}
+          className="hidden md:flex items-center gap-2 rounded-full bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 active:bg-violet-800 transition-colors"
+        >
+          <PlusIcon />
+          Nueva Transacción
+        </button>
 
         {/* Active filter pills */}
         {hasActiveFilters && (
