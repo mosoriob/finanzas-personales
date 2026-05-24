@@ -28,6 +28,10 @@ type Transaction = {
   category: Category;
 };
 
+type OptimisticUpdate =
+  | { type: "category"; txId: number; category: Category }
+  | { type: "shared"; txId: number; isShared: boolean; isReimbursed: boolean };
+
 const CATEGORY_EMOJI: Record<string, string> = {
   Supermercado: "🛒",
   Transporte: "🚗",
@@ -94,8 +98,6 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
   const [, startCategoryTransition] = useTransition();
   const [, startSharedTransition] = useTransition();
 
-  const [localTransactions, setLocalTransactions] = useState<Transaction[]>(transactions);
-
   const [search, setSearch] = useState("");
   const [accountFilter, setAccountFilter] = useState<string>("todas");
   const [categoryFilter, setCategoryFilter] = useState<string>("todas");
@@ -104,11 +106,15 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
   const [toast, setToast] = useState<string | null>(null);
 
   const [optimisticTransactions, applyOptimistic] = useOptimistic(
-    localTransactions,
-    (state, update: { txId: number; category: Category }) =>
-      state.map((t) =>
-        t.id === update.txId ? { ...t, category: { ...update.category } } : t,
-      ),
+    transactions,
+    (state, update: OptimisticUpdate) =>
+      state.map((t) => {
+        if (t.id !== update.txId) return t;
+        if (update.type === "category") {
+          return { ...t, category: { ...update.category } };
+        }
+        return { ...t, isShared: update.isShared, isReimbursed: update.isReimbursed };
+      }),
   );
 
   // Auto-dismiss toast after 3000ms
@@ -120,14 +126,14 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
 
   function handleSelect(txId: number, newCategoryId: number) {
     setOpenPickerForTxId(null);
-    const current = localTransactions.find((t) => t.id === txId);
+    const current = transactions.find((t) => t.id === txId);
     if (!current || current.category.id === newCategoryId) return; // no-op
 
     const newCategory = categories.find((c) => c.id === newCategoryId);
     if (!newCategory) return;
 
     startCategoryTransition(async () => {
-      applyOptimistic({ txId, category: newCategory });
+      applyOptimistic({ type: "category", txId, category: newCategory });
       const result = await updateTransactionCategory(txId, newCategoryId);
       if (result.ok) {
         router.refresh();
@@ -138,10 +144,8 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
   }
 
   function handleSharedToggle(txId: number, field: "isShared" | "isReimbursed") {
-    const current = localTransactions.find((t) => t.id === txId);
+    const current = transactions.find((t) => t.id === txId);
     if (!current) return;
-
-    const prevState = { isShared: current.isShared, isReimbursed: current.isReimbursed };
 
     let newIsShared = current.isShared;
     let newIsReimbursed = current.isReimbursed;
@@ -154,26 +158,19 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
       newIsReimbursed = !current.isReimbursed;
     }
 
-    // Optimistic update
-    setLocalTransactions((prev) =>
-      prev.map((t) =>
-        t.id === txId ? { ...t, isShared: newIsShared, isReimbursed: newIsReimbursed } : t,
-      ),
-    );
-
     startSharedTransition(async () => {
+      applyOptimistic({
+        type: "shared",
+        txId,
+        isShared: newIsShared,
+        isReimbursed: newIsReimbursed,
+      });
       try {
         await updateSharedFlags(txId, newIsShared, newIsReimbursed);
+        router.refresh();
       } catch (err) {
         console.error("No se pudo actualizar el estado compartido:", err);
-        // Revert optimistic update
-        setLocalTransactions((prev) =>
-          prev.map((t) =>
-            t.id === txId
-              ? { ...t, isShared: prevState.isShared, isReimbursed: prevState.isReimbursed }
-              : t,
-          ),
-        );
+        setToast("No se pudo actualizar");
       }
     });
   }
