@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useMemo, useOptimistic, useTransition, useEffect } from "react";
+import { useState, useMemo, useOptimistic, useTransition, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { formatCLP } from "@/lib/format";
 import { CategoryPicker } from "@/components/CategoryPicker";
-import { updateTransactionCategory, updateSharedFlags } from "./actions";
+import { updateTransactionCategory, updateSharedFlags, updateTransactionNote } from "./actions";
 
 type Account = {
   id: number;
@@ -21,6 +21,7 @@ type Transaction = {
   id: number;
   date: string; // ISO string (serialized from Date)
   description: string;
+  note: string | null;
   amount: number;
   isShared: boolean;
   isReimbursed: boolean;
@@ -93,6 +94,7 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
   const router = useRouter();
   const [, startCategoryTransition] = useTransition();
   const [, startSharedTransition] = useTransition();
+  const [, startNoteTransition] = useTransition();
 
   const [localTransactions, setLocalTransactions] = useState<Transaction[]>(transactions);
 
@@ -102,6 +104,9 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
   const [sharedFilter, setSharedFilter] = useState<SharedFilter>("todos");
   const [openPickerForTxId, setOpenPickerForTxId] = useState<number | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [editingNoteForTxId, setEditingNoteForTxId] = useState<number | null>(null);
+  const [editingNoteValue, setEditingNoteValue] = useState<string>("");
+  const noteInputRef = useRef<HTMLInputElement>(null);
 
   const [optimisticTransactions, applyOptimistic] = useOptimistic(
     localTransactions,
@@ -178,13 +183,51 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
     });
   }
 
+  function openNoteEditor(txId: number, currentNote: string | null) {
+    setEditingNoteForTxId(txId);
+    setEditingNoteValue(currentNote ?? "");
+    // auto-focus handled by useEffect
+  }
+
+  function saveNote(txId: number) {
+    const newNote = editingNoteValue.trim() || null;
+    setEditingNoteForTxId(null);
+
+    startNoteTransition(async () => {
+      // Optimistic update
+      setLocalTransactions((prev) =>
+        prev.map((t) => (t.id === txId ? { ...t, note: newNote } : t)),
+      );
+      const result = await updateTransactionNote(txId, newNote);
+      if (!result.ok) {
+        // Revert
+        setLocalTransactions((prev) =>
+          prev.map((t) =>
+            t.id === txId
+              ? { ...t, note: localTransactions.find((lt) => lt.id === txId)?.note ?? null }
+              : t,
+          ),
+        );
+        setToast("No se pudo guardar la nota");
+      }
+    });
+  }
+
+  // Auto-focus the note input when it appears
+  useEffect(() => {
+    if (editingNoteForTxId !== null) {
+      noteInputRef.current?.focus();
+    }
+  }, [editingNoteForTxId]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return optimisticTransactions.filter((t) => {
       if (q) {
         const matchesDesc = t.description.toLowerCase().includes(q);
         const matchesAccount = t.account.name.toLowerCase().includes(q);
-        if (!matchesDesc && !matchesAccount) return false;
+        const matchesNote = t.note?.toLowerCase().includes(q) ?? false;
+        if (!matchesDesc && !matchesAccount && !matchesNote) return false;
       }
       if (accountFilter !== "todas" && t.account.name !== accountFilter) return false;
       if (categoryFilter !== "todas" && t.category.name !== categoryFilter) return false;
@@ -261,7 +304,7 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
           <SearchIcon />
           <input
             type="text"
-            placeholder="Buscar por descripción o cuenta..."
+            placeholder="Buscar por descripción, nota o cuenta..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="flex-1 text-sm text-gray-700 placeholder-gray-400 bg-transparent outline-none"
@@ -430,7 +473,7 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
                 return (
                   <tr
                     key={t.id}
-                    className="border-b border-gray-100 last:border-0 hover:bg-white/70 transition-colors"
+                    className="group border-b border-gray-100 last:border-0 hover:bg-white/70 transition-colors"
                   >
                     <td className="py-3 pr-4 text-sm text-gray-400 tabular-nums">
                       {formatDate(t.date)}
@@ -438,13 +481,44 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
                     <td className="py-3 pr-4">
                       <div className="flex items-center gap-2.5">
                         <span className="text-base leading-none">{emoji}</span>
-                        <div className="flex flex-col">
-                          <span className="text-sm font-medium text-gray-700">
-                            {t.description}
-                          </span>
+                        <div className="flex flex-col flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-sm font-medium text-gray-700">
+                              {t.description}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => openNoteEditor(t.id, t.note)}
+                              className="text-gray-300 hover:text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                              title="Agregar nota"
+                            >
+                              ✏️
+                            </button>
+                          </div>
                           <span className="text-xs text-gray-400">
                             {t.account.name}
                           </span>
+                          {editingNoteForTxId === t.id ? (
+                            <input
+                              ref={noteInputRef}
+                              type="text"
+                              value={editingNoteValue}
+                              onChange={(e) => setEditingNoteValue(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") saveNote(t.id);
+                                if (e.key === "Escape") setEditingNoteForTxId(null);
+                              }}
+                              onBlur={() => saveNote(t.id)}
+                              placeholder="Agregar nota..."
+                              className="text-xs text-gray-700 bg-white border border-indigo-200 rounded px-1.5 py-0.5 outline-none focus:border-violet-400 w-full mt-0.5"
+                            />
+                          ) : (
+                            t.note && (
+                              <span className="text-xs text-indigo-400 italic">
+                                {t.note}
+                              </span>
+                            )
+                          )}
                         </div>
                       </div>
                     </td>

@@ -32,6 +32,33 @@ export async function updateTransactionCategory(
   return { ok: true };
 }
 
+export type UpdateNoteResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+export async function updateTransactionNote(
+  id: number,
+  note: string | null,
+): Promise<UpdateNoteResult> {
+  if (!Number.isInteger(id) || id <= 0) {
+    return { ok: false, error: "Datos inválidos" };
+  }
+
+  const normalizedNote = note?.trim() || null;
+
+  try {
+    await prisma.transaction.update({
+      where: { id },
+      data: { note: normalizedNote },
+    });
+  } catch {
+    return { ok: false, error: "No se pudo actualizar la nota" };
+  }
+
+  revalidatePath("/transacciones");
+  return { ok: true };
+}
+
 export async function updateSharedFlags(
   id: number,
   isShared: boolean,
