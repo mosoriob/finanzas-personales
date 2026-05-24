@@ -15,8 +15,10 @@ import {
   updateTransactionCategory,
   updateSharedFlags,
   updateTransactionNote,
+  deleteTransaction,
 } from './actions';
 import { TransactionCard } from '@/components/transaction-card';
+import { DeleteConfirmDialog } from '@/components/DeleteConfirmDialog';
 
 type Account = {
   id: number;
@@ -44,7 +46,8 @@ type Transaction = {
 type OptimisticUpdate =
   | { type: 'category'; txId: number; category: Category }
   | { type: 'shared'; txId: number; isShared: boolean; isReimbursed: boolean }
-  | { type: 'note'; txId: number; note: string | null };
+  | { type: 'note'; txId: number; note: string | null }
+  | { type: 'delete'; id: number };
 
 const CATEGORY_EMOJI: Record<string, string> = {
   Supermercado: '🛒',
@@ -116,6 +119,7 @@ export function TransaccionesClient({
   const [, startCategoryTransition] = useTransition();
   const [, startSharedTransition] = useTransition();
   const [, startNoteTransition] = useTransition();
+  const [, startDeleteTransition] = useTransition();
 
   const [search, setSearch] = useState('');
   const [accountFilter, setAccountFilter] = useState<string>('todas');
@@ -130,24 +134,31 @@ export function TransaccionesClient({
   );
   const [editingNoteValue, setEditingNoteValue] = useState<string>('');
   const noteInputRef = useRef<HTMLInputElement>(null);
+  const [deletingTx, setDeletingTx] = useState<Transaction | null>(null);
 
   const [optimisticTransactions, applyOptimistic] = useOptimistic(
     transactions,
-    (state, update: OptimisticUpdate) =>
-      state.map((t) => {
-        if (t.id !== update.txId) return t;
-        if (update.type === 'category') {
-          return { ...t, category: { ...update.category } };
+    (state, update: OptimisticUpdate) => {
+      if (update.type === 'delete') {
+        return state.filter((t) => t.id !== update.id);
+      }
+      // update is one of category | shared | note here
+      const nonDeleteUpdate = update;
+      return state.map((t) => {
+        if (t.id !== nonDeleteUpdate.txId) return t;
+        if (nonDeleteUpdate.type === 'category') {
+          return { ...t, category: { ...nonDeleteUpdate.category } };
         }
-        if (update.type === 'note') {
-          return { ...t, note: update.note };
+        if (nonDeleteUpdate.type === 'note') {
+          return { ...t, note: nonDeleteUpdate.note };
         }
         return {
           ...t,
-          isShared: update.isShared,
-          isReimbursed: update.isReimbursed,
+          isShared: nonDeleteUpdate.isShared,
+          isReimbursed: nonDeleteUpdate.isReimbursed,
         };
-      }),
+      });
+    },
   );
 
   // Auto-dismiss toast after 3000ms
@@ -217,6 +228,30 @@ export function TransaccionesClient({
     setEditingNoteForTxId(txId);
     setEditingNoteValue(currentNote ?? '');
     // auto-focus handled by useEffect
+  }
+
+  function handleDeleteRequest(tx: Transaction) {
+    setDeletingTx(tx);
+  }
+
+  function handleDeleteCancel() {
+    setDeletingTx(null);
+  }
+
+  function handleDeleteConfirm() {
+    if (!deletingTx) return;
+    const txToDelete = deletingTx;
+    setDeletingTx(null);
+
+    startDeleteTransition(async () => {
+      applyOptimistic({ type: 'delete', id: txToDelete.id });
+      const result = await deleteTransaction(txToDelete.id);
+      if (result.ok) {
+        router.refresh();
+      } else {
+        setToast('No se pudo eliminar la transacción');
+      }
+    });
   }
 
   function saveNote(txId: number) {
@@ -602,13 +637,35 @@ export function TransaccionesClient({
                       />
                     </td>
                     <td className="py-3 text-right text-sm font-semibold tabular-nums">
-                      <span
-                        style={{
-                          color: isPositive ? '#38a169' : '#1a202c',
-                        }}
-                      >
-                        {formatCLP(t.amount)}
-                      </span>
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteRequest(t)}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-red-500 flex-shrink-0"
+                          title="Eliminar transacción"
+                          aria-label="Eliminar transacción"
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 20 20"
+                            fill="currentColor"
+                            className="w-4 h-4"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        </button>
+                        <span
+                          style={{
+                            color: isPositive ? '#38a169' : '#1a202c',
+                          }}
+                        >
+                          {formatCLP(t.amount)}
+                        </span>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -647,6 +704,7 @@ export function TransaccionesClient({
                 key={t.id}
                 transaction={t}
                 onCategoryClick={() => setOpenPickerForTxId(t.id)}
+                onDelete={() => handleDeleteRequest(t)}
               />
             ))}
             {/* Category pickers for mobile */}
@@ -667,6 +725,15 @@ export function TransaccionesClient({
           </div>
         )}
       </div>
+      {/* Delete confirmation dialog */}
+      {deletingTx && (
+        <DeleteConfirmDialog
+          description={deletingTx.description}
+          amount={deletingTx.amount}
+          onConfirm={handleDeleteConfirm}
+          onCancel={handleDeleteCancel}
+        />
+      )}
     </div>
   );
 }
