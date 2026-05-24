@@ -32,6 +32,7 @@ export default async function CuentasPage() {
 
   // Fetch all accounts with their last-30-day transactions
   const accounts = await prisma.account.findMany({
+    where: { hidden: false },
     orderBy: { id: "asc" },
     include: {
       transactions: {

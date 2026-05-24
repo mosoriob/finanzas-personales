@@ -37,7 +37,7 @@ async function getDashboardData() {
     recentTx,
     yearTx,
   ] = await Promise.all([
-    prisma.account.findMany({ orderBy: { id: "asc" } }),
+    prisma.account.findMany({ where: { hidden: false }, orderBy: { id: "asc" } }),
 
     prisma.transaction.findMany({
       where: { date: { gte: currentMonthStart, lt: currentMonthEnd } },

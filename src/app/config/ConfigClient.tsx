@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { createAccount, deleteAccount, createCategory } from "./actions";
+import { createAccount, deleteAccount, createCategory, toggleAccountVisibility } from "./actions";
 
 const BANKS = [
   "Banco de Chile",
@@ -36,6 +36,7 @@ interface Account {
   bank: string;
   type: string;
   color: string;
+  hidden: boolean;
 }
 
 interface Category {
@@ -75,6 +76,15 @@ export function ConfigClient({ accounts, categories }: Props) {
     setIsPending(true);
     try {
       await deleteAccount(id);
+    } finally {
+      setIsPending(false);
+    }
+  }
+
+  async function handleToggleVisibility(id: number) {
+    setIsPending(true);
+    try {
+      await toggleAccountVisibility(id);
     } finally {
       setIsPending(false);
     }
@@ -150,6 +160,7 @@ export function ConfigClient({ accounts, categories }: Props) {
             isPending={isPending}
             onCreateAccount={handleCreateAccount}
             onDeleteAccount={handleDeleteAccount}
+            onToggleVisibility={handleToggleVisibility}
           />
         ) : (
           <CategoriasPanel
@@ -176,6 +187,7 @@ interface CuentasPanelProps {
   isPending: boolean;
   onCreateAccount: (formData: FormData) => Promise<void>;
   onDeleteAccount: (id: number) => Promise<void>;
+  onToggleVisibility: (id: number) => Promise<void>;
 }
 
 function CuentasPanel({
@@ -188,6 +200,7 @@ function CuentasPanel({
   isPending,
   onCreateAccount,
   onDeleteAccount,
+  onToggleVisibility,
 }: CuentasPanelProps) {
   return (
     <div className="flex flex-col gap-5">
@@ -374,7 +387,7 @@ function CuentasPanel({
             {accounts.map((account) => (
               <li
                 key={account.id}
-                className="flex items-center gap-3 px-5 py-3.5"
+                className={`flex items-center gap-3 px-5 py-3.5 transition-opacity ${account.hidden ? "opacity-50" : ""}`}
               >
                 {/* Color dot */}
                 <span
@@ -388,10 +401,23 @@ function CuentasPanel({
                   </p>
                   <p className="text-xs text-gray-400 truncate">
                     {account.bank} · {account.type}
+                    {account.hidden && " · oculta"}
                   </p>
                 </div>
                 {/* Actions */}
                 <div className="flex gap-1.5 flex-shrink-0">
+                  <button
+                    onClick={() => handleToggleVisibility(account.id)}
+                    disabled={isPending}
+                    title={account.hidden ? "Mostrar cuenta" : "Ocultar cuenta"}
+                    className={`text-xs border rounded-lg px-3 py-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                      account.hidden
+                        ? "text-gray-400 border-gray-200 hover:bg-gray-50"
+                        : "text-indigo-400 border-indigo-100 hover:bg-indigo-50"
+                    }`}
+                  >
+                    {account.hidden ? "👁️ Mostrar" : "🙈 Ocultar"}
+                  </button>
                   <button
                     onClick={() => handleDeleteAccount(account.id)}
                     disabled={isPending}
@@ -410,6 +436,10 @@ function CuentasPanel({
 
   async function handleDeleteAccount(id: number) {
     await onDeleteAccount(id);
+  }
+
+  async function handleToggleVisibility(id: number) {
+    await onToggleVisibility(id);
   }
 }
 
