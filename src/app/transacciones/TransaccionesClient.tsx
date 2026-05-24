@@ -32,7 +32,8 @@ type Transaction = {
 
 type OptimisticUpdate =
   | { type: "category"; txId: number; category: Category }
-  | { type: "shared"; txId: number; isShared: boolean; isReimbursed: boolean };
+  | { type: "shared"; txId: number; isShared: boolean; isReimbursed: boolean }
+  | { type: "note"; txId: number; note: string | null };
 
 const CATEGORY_EMOJI: Record<string, string> = {
   Supermercado: "🛒",
@@ -119,6 +120,9 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
         if (update.type === "category") {
           return { ...t, category: { ...update.category } };
         }
+        if (update.type === "note") {
+          return { ...t, note: update.note };
+        }
         return { ...t, isShared: update.isShared, isReimbursed: update.isReimbursed };
       }),
   );
@@ -191,21 +195,15 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
     const newNote = editingNoteValue.trim() || null;
     setEditingNoteForTxId(null);
 
+    const current = transactions.find((t) => t.id === txId);
+    if (!current || (current.note ?? null) === newNote) return; // no-op
+
     startNoteTransition(async () => {
-      // Optimistic update
-      setLocalTransactions((prev) =>
-        prev.map((t) => (t.id === txId ? { ...t, note: newNote } : t)),
-      );
+      applyOptimistic({ type: "note", txId, note: newNote });
       const result = await updateTransactionNote(txId, newNote);
-      if (!result.ok) {
-        // Revert
-        setLocalTransactions((prev) =>
-          prev.map((t) =>
-            t.id === txId
-              ? { ...t, note: localTransactions.find((lt) => lt.id === txId)?.note ?? null }
-              : t,
-          ),
-        );
+      if (result.ok) {
+        router.refresh();
+      } else {
         setToast("No se pudo guardar la nota");
       }
     });
