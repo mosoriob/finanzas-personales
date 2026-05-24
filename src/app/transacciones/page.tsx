@@ -21,6 +21,7 @@ export default async function TransaccionesPage() {
     id: t.id,
     date: t.date.toISOString(),
     description: t.description,
+    note: t.note,
     amount: t.amount,
     isShared: t.isShared,
     isReimbursed: t.isReimbursed,

@@ -29,6 +29,7 @@ model Transaction {
   id           Int      @id @default(autoincrement())
   date         DateTime
   description  String
+  note         String?
   amount       Int
   accountId    Int
   categoryId   Int
