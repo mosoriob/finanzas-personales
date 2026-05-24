@@ -34,6 +34,18 @@ export async function deleteAccount(id: number) {
   revalidatePath("/config");
 }
 
+export async function toggleAccountVisibility(id: number) {
+  const account = await prisma.account.findUniqueOrThrow({ where: { id } });
+  await prisma.account.update({
+    where: { id },
+    data: { hidden: !account.hidden },
+  });
+  revalidatePath("/config");
+  revalidatePath("/");
+  revalidatePath("/cuentas");
+  revalidatePath("/transacciones");
+}
+
 export async function createCategory(formData: FormData) {
   const name = formData.get("name") as string;
   const emoji = (formData.get("emoji") as string) || "📌";

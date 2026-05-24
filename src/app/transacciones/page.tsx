@@ -6,13 +6,16 @@ export const dynamic = "force-dynamic";
 export default async function TransaccionesPage() {
   const [transactions, accounts, categories] = await Promise.all([
     prisma.transaction.findMany({
+      where: {
+        account: { hidden: false },
+      },
       include: {
         account: true,
         category: true,
       },
       orderBy: { date: "desc" },
     }),
-    prisma.account.findMany({ orderBy: { name: "asc" } }),
+    prisma.account.findMany({ where: { hidden: false }, orderBy: { name: "asc" } }),
     prisma.category.findMany({ orderBy: { name: "asc" } }),
   ]);
 
