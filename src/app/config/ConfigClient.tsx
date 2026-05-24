@@ -91,9 +91,30 @@ export function ConfigClient({ accounts, categories }: Props) {
   }
 
   return (
-    <div className="flex gap-6 min-h-[500px]">
-      {/* Left sidebar */}
-      <aside className="w-[220px] flex-shrink-0">
+    <div className="flex flex-col md:flex-row gap-6 min-h-[500px]">
+      {/* Mobile horizontal tabs — shown below md */}
+      <div className="md:hidden flex gap-2 mb-1">
+        {([
+          { tab: "bancos" as Tab, label: "Conectar banco" },
+          { tab: "cuentas" as Tab, label: "Cuentas" },
+          { tab: "categorias" as Tab, label: "Categorías" },
+        ]).map(({ tab, label }) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`flex-1 py-2.5 px-3 rounded-xl text-sm font-medium transition-all min-h-[44px] ${
+              activeTab === tab
+                ? "bg-indigo-50 text-indigo-500 font-semibold"
+                : "bg-white border border-gray-100 text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Left sidebar — hidden on mobile */}
+      <aside className="hidden md:block w-[220px] flex-shrink-0">
         <div className="bg-white rounded-2xl border border-gray-100 p-3 flex flex-col gap-1">
           {(["bancos", "cuentas", "categorias"] as Tab[]).map((tab) => {
             const labels: Record<Tab, string> = { bancos: "Conectar banco", cuentas: "Cuentas", categorias: "Categorías" };
@@ -425,7 +446,7 @@ function CategoriasPanel({
         <form
           ref={formRef}
           action={onCreateCategory}
-          className="flex gap-3 items-end"
+          className="flex flex-col sm:flex-row gap-3 sm:items-end"
         >
           <div className="flex flex-col gap-1.5 flex-1">
             <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
@@ -467,7 +488,7 @@ function CategoriasPanel({
           No hay categorías registradas aún.
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {categories.map((cat) => (
             <div
               key={cat.id}
