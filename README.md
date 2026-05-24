@@ -117,6 +117,43 @@ Abrir [http://localhost:3000](http://localhost:3000)
 
 > **Nota de seguridad**: La conexion se hace directamente desde tu computador al portal del banco. Tus credenciales nunca se envian a ningun servidor externo. Se pasan al proceso de scraping via stdin (no visibles en `ps`).
 
+## Despliegue multi-instancia
+
+Si quieres correr varias instancias del mismo compose en la misma maquina (por ejemplo, una por integrante de la familia, o una de staging y otra de produccion), cada instancia necesita un puerto distinto en el host.
+
+### Configurar el puerto
+
+El puerto del host se controla con la variable de entorno `APP_PORT` (por defecto `3000`):
+
+```bash
+# .env
+APP_PORT=3001
+```
+
+O directamente al ejecutar:
+
+```bash
+APP_PORT=3001 docker compose up -d
+```
+
+El contenedor siempre escucha en el puerto 3000 internamente; solo cambia el puerto del host.
+
+### Aislamiento de volumenes
+
+Para que cada instancia tenga su propia base de datos, usa `COMPOSE_PROJECT_NAME`. Docker Compose usa el nombre del proyecto como prefijo de los volumenes, por lo que distintos nombres crean volumenes aislados automaticamente:
+
+```bash
+# Instancia 1 — Fernando
+COMPOSE_PROJECT_NAME=finanzas-fernando APP_PORT=3001 docker compose up -d
+
+# Instancia 2 — Maria
+COMPOSE_PROJECT_NAME=finanzas-maria APP_PORT=3002 docker compose up -d
+```
+
+Cada instancia queda accesible en su propio puerto:
+- Fernando: http://servidor:3001
+- Maria: http://servidor:3002
+
 ## Creditos
 
 Construida en vivo por [Fernando Smith](https://github.com/fernandosmither) y [Nacho Bernardo](https://luma.com/u1azetih) durante un evento de [ai+friends](https://aiplusfriends.com) -- la comunidad latinoamericana para aprender IA construyendo.
