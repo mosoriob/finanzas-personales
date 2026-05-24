@@ -21,7 +21,8 @@ export function CategoryPicker({
 
   useEffect(() => {
     function handleMouseDown(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
+      const target = e.target as Element | null;
+      if (target && !target.closest("[data-category-picker]")) {
         onClose();
       }
     }
@@ -43,6 +44,7 @@ export function CategoryPicker({
   return (
     <div
       ref={ref}
+      data-category-picker
       className="absolute left-0 top-full z-50 mt-1 w-[220px] max-h-[280px] overflow-y-auto rounded-xl border border-indigo-100 bg-white shadow-lg"
     >
       {categories.map((c) => {

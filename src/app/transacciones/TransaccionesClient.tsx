@@ -1,11 +1,22 @@
-"use client";
+'use client';
 
-import { useState, useMemo, useOptimistic, useTransition, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
-import { formatCLP } from "@/lib/format";
-import { CategoryPicker } from "@/components/CategoryPicker";
-import { updateTransactionCategory, updateSharedFlags, updateTransactionNote } from "./actions";
-import { TransactionCard } from "@/components/transaction-card";
+import {
+  useState,
+  useMemo,
+  useOptimistic,
+  useTransition,
+  useEffect,
+  useRef,
+} from 'react';
+import { useRouter } from 'next/navigation';
+import { formatCLP } from '@/lib/format';
+import { CategoryPicker } from '@/components/CategoryPicker';
+import {
+  updateTransactionCategory,
+  updateSharedFlags,
+  updateTransactionNote,
+} from './actions';
+import { TransactionCard } from '@/components/transaction-card';
 
 type Account = {
   id: number;
@@ -31,41 +42,41 @@ type Transaction = {
 };
 
 type OptimisticUpdate =
-  | { type: "category"; txId: number; category: Category }
-  | { type: "shared"; txId: number; isShared: boolean; isReimbursed: boolean }
-  | { type: "note"; txId: number; note: string | null };
+  | { type: 'category'; txId: number; category: Category }
+  | { type: 'shared'; txId: number; isShared: boolean; isReimbursed: boolean }
+  | { type: 'note'; txId: number; note: string | null };
 
 const CATEGORY_EMOJI: Record<string, string> = {
-  Supermercado: "🛒",
-  Transporte: "🚗",
-  Entretenimiento: "🎬",
-  Salud: "💊",
-  Restaurant: "🍕",
-  Servicios: "📱",
-  Hogar: "🏠",
-  Educación: "📚",
-  Sueldo: "💰",
-  Transferencia: "🔄",
-  Otro: "📌",
+  Supermercado: '🛒',
+  Transporte: '🚗',
+  Entretenimiento: '🎬',
+  Salud: '💊',
+  Restaurant: '🍕',
+  Servicios: '📱',
+  Hogar: '🏠',
+  Educación: '📚',
+  Sueldo: '💰',
+  Transferencia: '🔄',
+  Otro: '📌',
 };
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
-  return d.toLocaleDateString("es-CL", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
+  return d.toLocaleDateString('es-CL', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
   });
 }
 
 function CategoryBadge({ name }: { name: string }) {
-  const isSueldo = name === "Sueldo";
+  const isSueldo = name === 'Sueldo';
   return (
     <span
       className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
         isSueldo
-          ? "bg-green-100 text-green-600"
-          : "bg-indigo-50 text-indigo-500"
+          ? 'bg-green-100 text-green-600'
+          : 'bg-indigo-50 text-indigo-500'
       }`}
     >
       {name}
@@ -88,7 +99,7 @@ function SearchIcon() {
   );
 }
 
-type SharedFilter = "todos" | "familiares" | "no-familiares";
+type SharedFilter = 'todos' | 'familiares' | 'no-familiares';
 
 interface Props {
   transactions: Transaction[];
@@ -96,20 +107,28 @@ interface Props {
   categories: Category[];
 }
 
-export function TransaccionesClient({ transactions, accounts, categories }: Props) {
+export function TransaccionesClient({
+  transactions,
+  accounts,
+  categories,
+}: Props) {
   const router = useRouter();
   const [, startCategoryTransition] = useTransition();
   const [, startSharedTransition] = useTransition();
   const [, startNoteTransition] = useTransition();
 
-  const [search, setSearch] = useState("");
-  const [accountFilter, setAccountFilter] = useState<string>("todas");
-  const [categoryFilter, setCategoryFilter] = useState<string>("todas");
-  const [sharedFilter, setSharedFilter] = useState<SharedFilter>("todos");
-  const [openPickerForTxId, setOpenPickerForTxId] = useState<number | null>(null);
+  const [search, setSearch] = useState('');
+  const [accountFilter, setAccountFilter] = useState<string>('todas');
+  const [categoryFilter, setCategoryFilter] = useState<string>('todas');
+  const [sharedFilter, setSharedFilter] = useState<SharedFilter>('todos');
+  const [openPickerForTxId, setOpenPickerForTxId] = useState<number | null>(
+    null,
+  );
   const [toast, setToast] = useState<string | null>(null);
-  const [editingNoteForTxId, setEditingNoteForTxId] = useState<number | null>(null);
-  const [editingNoteValue, setEditingNoteValue] = useState<string>("");
+  const [editingNoteForTxId, setEditingNoteForTxId] = useState<number | null>(
+    null,
+  );
+  const [editingNoteValue, setEditingNoteValue] = useState<string>('');
   const noteInputRef = useRef<HTMLInputElement>(null);
 
   const [optimisticTransactions, applyOptimistic] = useOptimistic(
@@ -117,13 +136,17 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
     (state, update: OptimisticUpdate) =>
       state.map((t) => {
         if (t.id !== update.txId) return t;
-        if (update.type === "category") {
+        if (update.type === 'category') {
           return { ...t, category: { ...update.category } };
         }
-        if (update.type === "note") {
+        if (update.type === 'note') {
           return { ...t, note: update.note };
         }
-        return { ...t, isShared: update.isShared, isReimbursed: update.isReimbursed };
+        return {
+          ...t,
+          isShared: update.isShared,
+          isReimbursed: update.isReimbursed,
+        };
       }),
   );
 
@@ -137,30 +160,35 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
   function handleSelect(txId: number, newCategoryId: number) {
     setOpenPickerForTxId(null);
     const current = transactions.find((t) => t.id === txId);
-    if (!current || current.category.id === newCategoryId) return; // no-op
+    if (!current || current.category.id === newCategoryId) {
+      return; // no-op
+    }
 
     const newCategory = categories.find((c) => c.id === newCategoryId);
     if (!newCategory) return;
 
     startCategoryTransition(async () => {
-      applyOptimistic({ type: "category", txId, category: newCategory });
+      applyOptimistic({ type: 'category', txId, category: newCategory });
       const result = await updateTransactionCategory(txId, newCategoryId);
       if (result.ok) {
         router.refresh();
       } else {
-        setToast("No se pudo cambiar la categoría");
+        setToast('No se pudo cambiar la categoría');
       }
     });
   }
 
-  function handleSharedToggle(txId: number, field: "isShared" | "isReimbursed") {
+  function handleSharedToggle(
+    txId: number,
+    field: 'isShared' | 'isReimbursed',
+  ) {
     const current = transactions.find((t) => t.id === txId);
     if (!current) return;
 
     let newIsShared = current.isShared;
     let newIsReimbursed = current.isReimbursed;
 
-    if (field === "isShared") {
+    if (field === 'isShared') {
       newIsShared = !current.isShared;
       if (!newIsShared) newIsReimbursed = false; // enforce invariant
     } else {
@@ -170,7 +198,7 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
 
     startSharedTransition(async () => {
       applyOptimistic({
-        type: "shared",
+        type: 'shared',
         txId,
         isShared: newIsShared,
         isReimbursed: newIsReimbursed,
@@ -179,15 +207,15 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
         await updateSharedFlags(txId, newIsShared, newIsReimbursed);
         router.refresh();
       } catch (err) {
-        console.error("No se pudo actualizar el estado compartido:", err);
-        setToast("No se pudo actualizar");
+        console.error('No se pudo actualizar el estado compartido:', err);
+        setToast('No se pudo actualizar');
       }
     });
   }
 
   function openNoteEditor(txId: number, currentNote: string | null) {
     setEditingNoteForTxId(txId);
-    setEditingNoteValue(currentNote ?? "");
+    setEditingNoteValue(currentNote ?? '');
     // auto-focus handled by useEffect
   }
 
@@ -199,12 +227,12 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
     if (!current || (current.note ?? null) === newNote) return; // no-op
 
     startNoteTransition(async () => {
-      applyOptimistic({ type: "note", txId, note: newNote });
+      applyOptimistic({ type: 'note', txId, note: newNote });
       const result = await updateTransactionNote(txId, newNote);
       if (result.ok) {
         router.refresh();
       } else {
-        setToast("No se pudo guardar la nota");
+        setToast('No se pudo guardar la nota');
       }
     });
   }
@@ -225,13 +253,21 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
         const matchesNote = t.note?.toLowerCase().includes(q) ?? false;
         if (!matchesDesc && !matchesAccount && !matchesNote) return false;
       }
-      if (accountFilter !== "todas" && t.account.name !== accountFilter) return false;
-      if (categoryFilter !== "todas" && t.category.name !== categoryFilter) return false;
-      if (sharedFilter === "familiares" && !t.isShared) return false;
-      if (sharedFilter === "no-familiares" && t.isShared) return false;
+      if (accountFilter !== 'todas' && t.account.name !== accountFilter)
+        return false;
+      if (categoryFilter !== 'todas' && t.category.name !== categoryFilter)
+        return false;
+      if (sharedFilter === 'familiares' && !t.isShared) return false;
+      if (sharedFilter === 'no-familiares' && t.isShared) return false;
       return true;
     });
-  }, [optimisticTransactions, search, accountFilter, categoryFilter, sharedFilter]);
+  }, [
+    optimisticTransactions,
+    search,
+    accountFilter,
+    categoryFilter,
+    sharedFilter,
+  ]);
 
   const totalCount = filtered.length;
   const totalExpenses = filtered
@@ -245,10 +281,10 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
     .reduce((acc, t) => acc + Math.abs(t.amount), 0);
 
   const hasActiveFilters =
-    search.trim() !== "" ||
-    accountFilter !== "todas" ||
-    categoryFilter !== "todas" ||
-    sharedFilter !== "todos";
+    search.trim() !== '' ||
+    accountFilter !== 'todas' ||
+    categoryFilter !== 'todas' ||
+    sharedFilter !== 'todos';
 
   return (
     <div className="flex flex-col gap-6">
@@ -265,7 +301,9 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
           <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">
             Transacciones
           </p>
-          <p className="text-2xl md:text-3xl font-semibold text-gray-800">{totalCount}</p>
+          <p className="text-2xl md:text-3xl font-semibold text-gray-800">
+            {totalCount}
+          </p>
         </div>
         <div className="bg-[#f9f9f9] rounded-[20px] p-4 md:p-7">
           <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">
@@ -307,7 +345,7 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
           />
           {search && (
             <button
-              onClick={() => setSearch("")}
+              onClick={() => setSearch('')}
               className="text-gray-300 hover:text-gray-500 transition-colors text-base leading-none"
             >
               ✕
@@ -320,9 +358,9 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
           value={accountFilter}
           onChange={(e) => setAccountFilter(e.target.value)}
           className={`border rounded-full text-sm px-4 py-2.5 md:py-2 outline-none cursor-pointer transition-colors w-full md:w-auto min-h-[44px] md:min-h-0 ${
-            accountFilter !== "todas"
-              ? "bg-indigo-50 border-violet-300 text-indigo-500"
-              : "bg-white border-indigo-100 text-gray-500 hover:border-indigo-200"
+            accountFilter !== 'todas'
+              ? 'bg-indigo-50 border-violet-300 text-indigo-500'
+              : 'bg-white border-indigo-100 text-gray-500 hover:border-indigo-200'
           }`}
         >
           <option value="todas">Todas las cuentas</option>
@@ -338,9 +376,9 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
           value={categoryFilter}
           onChange={(e) => setCategoryFilter(e.target.value)}
           className={`border rounded-full text-sm px-4 py-2.5 md:py-2 outline-none cursor-pointer transition-colors w-full md:w-auto min-h-[44px] md:min-h-0 ${
-            categoryFilter !== "todas"
-              ? "bg-indigo-50 border-violet-300 text-indigo-500"
-              : "bg-white border-indigo-100 text-gray-500 hover:border-indigo-200"
+            categoryFilter !== 'todas'
+              ? 'bg-indigo-50 border-violet-300 text-indigo-500'
+              : 'bg-white border-indigo-100 text-gray-500 hover:border-indigo-200'
           }`}
         >
           <option value="todas">Todas las categorías</option>
@@ -356,9 +394,9 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
           value={sharedFilter}
           onChange={(e) => setSharedFilter(e.target.value as SharedFilter)}
           className={`border rounded-full text-sm px-4 py-2.5 md:py-2 outline-none cursor-pointer transition-colors w-full md:w-auto min-h-[44px] md:min-h-0 ${
-            sharedFilter !== "todos"
-              ? "bg-indigo-50 border-violet-300 text-indigo-500"
-              : "bg-white border-indigo-100 text-gray-500 hover:border-indigo-200"
+            sharedFilter !== 'todos'
+              ? 'bg-indigo-50 border-violet-300 text-indigo-500'
+              : 'bg-white border-indigo-100 text-gray-500 hover:border-indigo-200'
           }`}
         >
           <option value="todos">Todos los gastos</option>
@@ -373,40 +411,40 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
               <span className="flex items-center gap-1.5 bg-indigo-50 border border-violet-300 text-indigo-500 rounded-full text-sm px-3 py-1">
                 &ldquo;{search.trim()}&rdquo;
                 <button
-                  onClick={() => setSearch("")}
+                  onClick={() => setSearch('')}
                   className="hover:text-indigo-700 transition-colors leading-none"
                 >
                   ✕
                 </button>
               </span>
             )}
-            {accountFilter !== "todas" && (
+            {accountFilter !== 'todas' && (
               <span className="flex items-center gap-1.5 bg-indigo-50 border border-violet-300 text-indigo-500 rounded-full text-sm px-3 py-1">
                 {accountFilter}
                 <button
-                  onClick={() => setAccountFilter("todas")}
+                  onClick={() => setAccountFilter('todas')}
                   className="hover:text-indigo-700 transition-colors leading-none"
                 >
                   ✕
                 </button>
               </span>
             )}
-            {categoryFilter !== "todas" && (
+            {categoryFilter !== 'todas' && (
               <span className="flex items-center gap-1.5 bg-indigo-50 border border-violet-300 text-indigo-500 rounded-full text-sm px-3 py-1">
                 {categoryFilter}
                 <button
-                  onClick={() => setCategoryFilter("todas")}
+                  onClick={() => setCategoryFilter('todas')}
                   className="hover:text-indigo-700 transition-colors leading-none"
                 >
                   ✕
                 </button>
               </span>
             )}
-            {sharedFilter !== "todos" && (
+            {sharedFilter !== 'todos' && (
               <span className="flex items-center gap-1.5 bg-indigo-50 border border-violet-300 text-indigo-500 rounded-full text-sm px-3 py-1">
-                {sharedFilter === "familiares" ? "Familiares" : "No familiares"}
+                {sharedFilter === 'familiares' ? 'Familiares' : 'No familiares'}
                 <button
-                  onClick={() => setSharedFilter("todos")}
+                  onClick={() => setSharedFilter('todos')}
                   className="hover:text-indigo-700 transition-colors leading-none"
                 >
                   ✕
@@ -422,14 +460,16 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-400">
             <span className="text-4xl">🔍</span>
-            <p className="text-sm font-medium">No se encontraron transacciones</p>
+            <p className="text-sm font-medium">
+              No se encontraron transacciones
+            </p>
             {hasActiveFilters && (
               <button
                 onClick={() => {
-                  setSearch("");
-                  setAccountFilter("todas");
-                  setCategoryFilter("todas");
-                  setSharedFilter("todos");
+                  setSearch('');
+                  setAccountFilter('todas');
+                  setCategoryFilter('todas');
+                  setSharedFilter('todos');
                 }}
                 className="text-xs text-indigo-400 hover:text-indigo-600 transition-colors underline underline-offset-2"
               >
@@ -464,7 +504,7 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
             <tbody>
               {filtered.map((t) => {
                 const emoji =
-                  CATEGORY_EMOJI[t.category.name] ?? t.category.emoji ?? "📌";
+                  CATEGORY_EMOJI[t.category.name] ?? t.category.emoji ?? '📌';
                 const isPositive = t.amount >= 0;
                 return (
                   <tr
@@ -499,10 +539,13 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
                               ref={noteInputRef}
                               type="text"
                               value={editingNoteValue}
-                              onChange={(e) => setEditingNoteValue(e.target.value)}
+                              onChange={(e) =>
+                                setEditingNoteValue(e.target.value)
+                              }
                               onKeyDown={(e) => {
-                                if (e.key === "Enter") saveNote(t.id);
-                                if (e.key === "Escape") setEditingNoteForTxId(null);
+                                if (e.key === 'Enter') saveNote(t.id);
+                                if (e.key === 'Escape')
+                                  setEditingNoteForTxId(null);
                               }}
                               onBlur={() => saveNote(t.id)}
                               placeholder="Agregar nota..."
@@ -543,7 +586,7 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
                       <input
                         type="checkbox"
                         checked={t.isShared}
-                        onChange={() => handleSharedToggle(t.id, "isShared")}
+                        onChange={() => handleSharedToggle(t.id, 'isShared')}
                         className="h-4 w-4 cursor-pointer accent-indigo-500"
                       />
                     </td>
@@ -551,7 +594,9 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
                       <input
                         type="checkbox"
                         checked={t.isReimbursed}
-                        onChange={() => handleSharedToggle(t.id, "isReimbursed")}
+                        onChange={() =>
+                          handleSharedToggle(t.id, 'isReimbursed')
+                        }
                         disabled={!t.isShared}
                         className="h-4 w-4 cursor-pointer accent-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed"
                       />
@@ -559,7 +604,7 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
                     <td className="py-3 text-right text-sm font-semibold tabular-nums">
                       <span
                         style={{
-                          color: isPositive ? "#38a169" : "#1a202c",
+                          color: isPositive ? '#38a169' : '#1a202c',
                         }}
                       >
                         {formatCLP(t.amount)}
@@ -578,14 +623,16 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-400">
             <span className="text-4xl">🔍</span>
-            <p className="text-sm font-medium">No se encontraron transacciones</p>
+            <p className="text-sm font-medium">
+              No se encontraron transacciones
+            </p>
             {hasActiveFilters && (
               <button
                 onClick={() => {
-                  setSearch("");
-                  setAccountFilter("todas");
-                  setCategoryFilter("todas");
-                  setSharedFilter("todos");
+                  setSearch('');
+                  setAccountFilter('todas');
+                  setCategoryFilter('todas');
+                  setSharedFilter('todos');
                 }}
                 className="text-xs text-indigo-400 hover:text-indigo-600 transition-colors underline underline-offset-2"
               >
@@ -609,7 +656,9 @@ export function TransaccionesClient({ transactions, accounts, categories }: Prop
                   <CategoryPicker
                     currentCategoryId={t.category.id}
                     categories={categories}
-                    onSelect={(newCategoryId) => handleSelect(t.id, newCategoryId)}
+                    onSelect={(newCategoryId) =>
+                      handleSelect(t.id, newCategoryId)
+                    }
                     onClose={() => setOpenPickerForTxId(null)}
                   />
                 </div>
