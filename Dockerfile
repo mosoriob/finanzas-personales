@@ -35,6 +35,19 @@ ENV DATABASE_URL="file:/app/prisma/dev.db"
 # Absolute path to the sidecar scraper spawned by the /api/sync route.
 ENV SYNC_SCRIPT_PATH=/app/scripts/sync-bank.mjs
 
+# Chromium + runtime deps for the open-banking-chile scraper (puppeteer-core)
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+       chromium \
+       fonts-liberation \
+       libnss3 \
+       libatk-bridge2.0-0 \
+       libdrm2 \
+       libxkbcommon0 \
+       libgbm1 \
+       libasound2 \
+  && rm -rf /var/lib/apt/lists/*
+
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
