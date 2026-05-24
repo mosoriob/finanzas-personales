@@ -25,7 +25,7 @@ import { updateCategory, deleteCategory } from "../actions";
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 
-const mockPrisma = prisma as {
+const mockPrisma = prisma as unknown as {
   category: {
     findFirst: ReturnType<typeof vi.fn>;
     update: ReturnType<typeof vi.fn>;
