@@ -34,7 +34,7 @@ model Transaction {
   amount       Int
   accountId    Int
   categoryId   Int
-  isShared     Boolean  @default(false)
+  familiar     String?
   isReimbursed Boolean  @default(false)
   account      Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
   category     Category @relation(fields: [categoryId], references: [id])
