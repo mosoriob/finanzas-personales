@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import { createAccount, deleteAccount, createCategory, toggleAccountVisibility, updateCategory, createRule, updateRule, deleteRule, previewApplyRules, applyRulesToExisting } from "./actions";
 import { DeleteCategoryDialog } from "@/components/DeleteCategoryDialog";
+import { EmojiPicker } from "@/components/EmojiPicker";
 import { AUTO_CATEGORIZATION_NAMES } from "@/lib/constants";
 
 const BANKS = [
@@ -471,6 +472,7 @@ function CategoriasPanel({
   isPending,
   onCreateCategory,
 }: CategoriasPanelProps) {
+  const [createEmoji, setCreateEmoji] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
   const [editEmoji, setEditEmoji] = useState("");
@@ -526,7 +528,10 @@ function CategoriasPanel({
         </h3>
         <form
           ref={formRef}
-          action={onCreateCategory}
+          action={async (fd) => {
+            await onCreateCategory(fd);
+            setCreateEmoji("");
+          }}
           className="flex flex-col sm:flex-row gap-3 sm:items-end"
         >
           <div className="flex flex-col gap-1.5 flex-1">
@@ -545,12 +550,10 @@ function CategoriasPanel({
             <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
               Emoji
             </label>
-            <input
+            <EmojiPicker
               name="emoji"
-              type="text"
-              placeholder="📌"
-              maxLength={4}
-              className="border border-indigo-100 rounded-xl p-2.5 text-sm text-gray-700 placeholder-gray-300 focus:outline-none focus:border-violet-400 transition-colors text-center"
+              value={createEmoji}
+              onChange={setCreateEmoji}
             />
           </div>
           <button
@@ -582,13 +585,11 @@ function CategoriasPanel({
                 return (
                   <li key={cat.id} className="flex flex-col gap-2 px-5 py-3.5">
                     <div className="flex items-center gap-2">
-                      <input
-                        type="text"
+                      <EmojiPicker
                         value={editEmoji}
-                        onChange={(e) => setEditEmoji(e.target.value)}
-                        maxLength={4}
+                        onChange={setEditEmoji}
                         disabled={editPending}
-                        className="border border-indigo-200 rounded-lg p-2 text-sm w-14 text-center focus:outline-none focus:border-violet-400 disabled:opacity-60"
+                        buttonClassName="border border-indigo-200 rounded-lg p-2 text-lg w-14 text-center hover:border-violet-400 focus:outline-none focus:border-violet-400 disabled:opacity-60"
                       />
                       <input
                         type="text"
