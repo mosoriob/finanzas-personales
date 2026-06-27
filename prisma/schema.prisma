@@ -24,6 +24,19 @@ model Category {
   name         String        @unique
   emoji        String        @default("📌")
   transactions Transaction[]
+  rules        Rule[]
+}
+
+model Rule {
+  id         Int      @id @default(autoincrement())
+  // Stored as entered (casing preserved for display) but compared
+  // case-insensitively. The unique index below uses COLLATE NOCASE.
+  match      String   @unique
+  categoryId Int
+  category   Category @relation(fields: [categoryId], references: [id])
+  createdAt  DateTime @default(now())
+
+  @@index([categoryId])
 }
 
 model Transaction {
