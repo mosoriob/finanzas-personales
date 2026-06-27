@@ -59,6 +59,23 @@ export async function updateTransactionNote(
   return { ok: true };
 }
 
+export type DeleteTransactionResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+export async function deleteTransaction(
+  id: number,
+): Promise<DeleteTransactionResult> {
+  try {
+    await prisma.transaction.delete({ where: { id } });
+    revalidatePath('/transacciones');
+    revalidatePath('/');
+    return { ok: true };
+  } catch {
+    return { ok: false, error: 'No se pudo eliminar la transacción' };
+  }
+}
+
 export async function updateSharedFlags(
   id: number,
   isShared: boolean,
