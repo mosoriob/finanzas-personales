@@ -7,9 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "vercel-build": "prisma generate && prisma db push && prisma db seed && next build"
+    "vercel-build": "prisma generate && prisma db push && prisma db seed && next build",
+    "sandcastle": "npx tsx .sandcastle/main.mts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -22,9 +24,11 @@
     "open-banking-chile": "github:kaihv/open-banking-chile#085faafd04601ddbef016b08e63e4c42e83a4dfb",
     "prisma": "^6.19.3",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@ai-hero/sandcastle": "^0.10.0",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
