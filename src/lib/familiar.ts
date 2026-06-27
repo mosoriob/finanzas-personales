@@ -63,3 +63,39 @@ export const FAMILIAR_DROPDOWN_OPTIONS: {
     label: FAMILIAR_LONG_LABEL[value],
   })),
 ];
+
+/**
+ * The transactions list household filter. "todos" applies no constraint; the
+ * remaining values reuse the dropdown encoding (VINA / MELIPILLA / PERSONAL,
+ * where PERSONAL means "no household").
+ */
+export type HouseholdFilter = "todos" | FamiliarDropdownValue;
+
+/** Options for the household filter <select>, in display order. */
+export const HOUSEHOLD_FILTER_OPTIONS: {
+  value: HouseholdFilter;
+  label: string;
+}[] = [
+  { value: "todos", label: "Todos los gastos" },
+  ...FAMILIAR_VALUES.map((value) => ({
+    value,
+    label: FAMILIAR_LONG_LABEL[value],
+  })),
+  { value: "PERSONAL", label: PERSONAL_LABEL },
+];
+
+/** True when a row's household passes the active filter. */
+export function matchesHouseholdFilter(
+  familiar: Familiar | null,
+  filter: HouseholdFilter,
+): boolean {
+  return filter === "todos" || familiar === dropdownValueToFamiliar(filter);
+}
+
+/** Short label for the active-filter pill (filter must not be "todos"). */
+export function householdFilterLabel(filter: HouseholdFilter): string {
+  const familiar = dropdownValueToFamiliar(
+    filter as Exclude<HouseholdFilter, "todos">,
+  );
+  return familiar === null ? PERSONAL_LABEL : FAMILIAR_SHORT_LABEL[familiar];
+}

@@ -25,10 +25,14 @@ import { CreateTransactionModal } from '@/components/CreateTransactionModal';
 import { DeleteConfirmDialog } from '@/components/DeleteConfirmDialog';
 import {
   FAMILIAR_DROPDOWN_OPTIONS,
+  HOUSEHOLD_FILTER_OPTIONS,
   familiarToDropdownValue,
   dropdownValueToFamiliar,
+  matchesHouseholdFilter,
+  householdFilterLabel,
   type Familiar,
   type FamiliarDropdownValue,
+  type HouseholdFilter,
 } from '@/lib/familiar';
 
 type Account = {
@@ -128,8 +132,6 @@ function PlusIcon() {
   );
 }
 
-type SharedFilter = 'todos' | 'familiares' | 'no-familiares';
-
 interface Props {
   transactions: Transaction[];
   accounts: Account[];
@@ -160,7 +162,8 @@ export function TransaccionesClient({
   const [search, setSearch] = useState('');
   const [accountFilter, setAccountFilter] = useState<string>('todas');
   const [categoryFilter, setCategoryFilter] = useState<string>('todas');
-  const [sharedFilter, setSharedFilter] = useState<SharedFilter>('todos');
+  const [householdFilter, setHouseholdFilter] =
+    useState<HouseholdFilter>('todos');
   const [openPickerForTxId, setOpenPickerForTxId] = useState<number | null>(
     null,
   );
@@ -247,8 +250,8 @@ export function TransaccionesClient({
     resetPage();
   }
 
-  function handleSharedFilterChange(value: SharedFilter) {
-    setSharedFilter(value);
+  function handleHouseholdFilterChange(value: HouseholdFilter) {
+    setHouseholdFilter(value);
     resetPage();
   }
 
@@ -393,8 +396,7 @@ export function TransaccionesClient({
         return false;
       if (categoryFilter !== 'todas' && t.category.name !== categoryFilter)
         return false;
-      if (sharedFilter === 'familiares' && t.familiar === null) return false;
-      if (sharedFilter === 'no-familiares' && t.familiar !== null) return false;
+      if (!matchesHouseholdFilter(t.familiar, householdFilter)) return false;
       return true;
     });
   }, [
@@ -402,7 +404,7 @@ export function TransaccionesClient({
     search,
     accountFilter,
     categoryFilter,
-    sharedFilter,
+    householdFilter,
   ]);
 
   // Summary bar: use filtered view within this page, but totalCount from server
@@ -421,7 +423,7 @@ export function TransaccionesClient({
     search.trim() !== '' ||
     accountFilter !== 'todas' ||
     categoryFilter !== 'todas' ||
-    sharedFilter !== 'todos';
+    householdFilter !== 'todos';
 
   // Mobile infinite scroll: load next page
   const loadMoreMobile = useCallback(async () => {
@@ -479,11 +481,10 @@ export function TransaccionesClient({
         return false;
       if (categoryFilter !== 'todas' && t.category.name !== categoryFilter)
         return false;
-      if (sharedFilter === 'familiares' && t.familiar === null) return false;
-      if (sharedFilter === 'no-familiares' && t.familiar !== null) return false;
+      if (!matchesHouseholdFilter(t.familiar, householdFilter)) return false;
       return true;
     });
-  }, [mobileItems, search, accountFilter, categoryFilter, sharedFilter]);
+  }, [mobileItems, search, accountFilter, categoryFilter, householdFilter]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -613,19 +614,23 @@ export function TransaccionesClient({
           ))}
         </select>
 
-        {/* Shared filter */}
+        {/* Household filter */}
         <select
-          value={sharedFilter}
-          onChange={(e) => handleSharedFilterChange(e.target.value as SharedFilter)}
+          value={householdFilter}
+          onChange={(e) =>
+            handleHouseholdFilterChange(e.target.value as HouseholdFilter)
+          }
           className={`border rounded-full text-sm px-4 py-2.5 md:py-2 outline-none cursor-pointer transition-colors w-full md:w-auto min-h-[44px] md:min-h-0 ${
-            sharedFilter !== 'todos'
+            householdFilter !== 'todos'
               ? 'bg-indigo-50 border-violet-300 text-indigo-500'
               : 'bg-white border-indigo-100 text-gray-500 hover:border-indigo-200'
           }`}
         >
-          <option value="todos">Todos los gastos</option>
-          <option value="familiares">Familiares</option>
-          <option value="no-familiares">No familiares</option>
+          {HOUSEHOLD_FILTER_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
         </select>
 
         {/* Nueva Transacción — desktop only */}
@@ -674,11 +679,11 @@ export function TransaccionesClient({
                 </button>
               </span>
             )}
-            {sharedFilter !== 'todos' && (
+            {householdFilter !== 'todos' && (
               <span className="flex items-center gap-1.5 bg-indigo-50 border border-violet-300 text-indigo-500 rounded-full text-sm px-3 py-1">
-                {sharedFilter === 'familiares' ? 'Familiares' : 'No familiares'}
+                {householdFilterLabel(householdFilter)}
                 <button
-                  onClick={() => handleSharedFilterChange('todos')}
+                  onClick={() => handleHouseholdFilterChange('todos')}
                   className="hover:text-indigo-700 transition-colors leading-none"
                 >
                   ✕
@@ -703,7 +708,7 @@ export function TransaccionesClient({
                   handleSearchChange('');
                   handleAccountFilterChange('todas');
                   handleCategoryFilterChange('todas');
-                  handleSharedFilterChange('todos');
+                  handleHouseholdFilterChange('todos');
                 }}
                 className="text-xs text-indigo-400 hover:text-indigo-600 transition-colors underline underline-offset-2"
               >
@@ -907,7 +912,7 @@ export function TransaccionesClient({
                   handleSearchChange('');
                   handleAccountFilterChange('todas');
                   handleCategoryFilterChange('todas');
-                  handleSharedFilterChange('todos');
+                  handleHouseholdFilterChange('todos');
                 }}
                 className="text-xs text-indigo-400 hover:text-indigo-600 transition-colors underline underline-offset-2"
               >
