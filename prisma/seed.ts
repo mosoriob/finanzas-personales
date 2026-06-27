@@ -62,7 +62,7 @@ function normalizeLabel(label: string): string {
     .trim()
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '');
+    .replace(/[\u0300-\u036f]/g, ''); // strip combining diacritical marks
 }
 
 // The merchant seed: [match text (stored as entered), raw category label].
