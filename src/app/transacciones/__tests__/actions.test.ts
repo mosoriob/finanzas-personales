@@ -54,7 +54,7 @@ function makeFakeTransaction(overrides: Record<string, unknown> = {}) {
     date: now,
     accountId: 1,
     categoryId: 2,
-    isShared: false,
+    familiar: null,
     isReimbursed: false,
     createdAt: now,
     ...overrides,
@@ -139,32 +139,49 @@ describe('createTransaction', () => {
     );
   });
 
-  it('defaults isShared and isReimbursed to false', async () => {
-    const fake = makeFakeTransaction({ isShared: false, isReimbursed: false });
+  it('defaults familiar to null (Personal) and isReimbursed to false', async () => {
+    const fake = makeFakeTransaction({ familiar: null, isReimbursed: false });
     mockCreate.mockResolvedValue(fake);
 
     await createTransaction(BASE_EXPENSE);
 
     expect(mockCreate).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ isShared: false, isReimbursed: false }),
+        data: expect.objectContaining({ familiar: null, isReimbursed: false }),
       }),
     );
   });
 
-  it('passes isShared and isReimbursed flags when provided', async () => {
-    const fake = makeFakeTransaction({ isShared: true, isReimbursed: true });
+  it('passes familiar household and isReimbursed when provided', async () => {
+    const fake = makeFakeTransaction({ familiar: 'VINA', isReimbursed: true });
     mockCreate.mockResolvedValue(fake);
 
     await createTransaction({
       ...BASE_EXPENSE,
-      isShared: true,
+      familiar: 'VINA',
       isReimbursed: true,
     });
 
     expect(mockCreate).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ isShared: true, isReimbursed: true }),
+        data: expect.objectContaining({ familiar: 'VINA', isReimbursed: true }),
+      }),
+    );
+  });
+
+  it('forces isReimbursed=false when familiar is null (Personal), even if true is passed', async () => {
+    const fake = makeFakeTransaction({ familiar: null, isReimbursed: false });
+    mockCreate.mockResolvedValue(fake);
+
+    await createTransaction({
+      ...BASE_EXPENSE,
+      familiar: null,
+      isReimbursed: true,
+    });
+
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ familiar: null, isReimbursed: false }),
       }),
     );
   });
