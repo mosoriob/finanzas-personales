@@ -3,7 +3,6 @@ import {
   matchesHouseholdFilter,
   householdFilterLabel,
   HOUSEHOLD_FILTER_OPTIONS,
-  type HouseholdFilter,
 } from "../familiar";
 
 describe("matchesHouseholdFilter", () => {
@@ -45,10 +44,8 @@ describe("HOUSEHOLD_FILTER_OPTIONS", () => {
 
 describe("householdFilterLabel", () => {
   it("returns the household label for active selections", () => {
-    expect(householdFilterLabel("VINA" as HouseholdFilter)).toBe("🏠 Viña");
-    expect(householdFilterLabel("MELIPILLA" as HouseholdFilter)).toBe(
-      "👴 Melipilla",
-    );
-    expect(householdFilterLabel("PERSONAL" as HouseholdFilter)).toBe("Personal");
+    expect(householdFilterLabel("VINA")).toBe("🏠 Viña");
+    expect(householdFilterLabel("MELIPILLA")).toBe("👴 Melipilla");
+    expect(householdFilterLabel("PERSONAL")).toBe("Personal");
   });
 });

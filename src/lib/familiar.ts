@@ -94,8 +94,7 @@ export function matchesHouseholdFilter(
 
 /** Short label for the active-filter pill (filter must not be "todos"). */
 export function householdFilterLabel(filter: HouseholdFilter): string {
-  const familiar = dropdownValueToFamiliar(
-    filter as Exclude<HouseholdFilter, "todos">,
-  );
+  if (filter === "todos") return "";
+  const familiar = dropdownValueToFamiliar(filter);
   return familiar === null ? PERSONAL_LABEL : FAMILIAR_SHORT_LABEL[familiar];
 }
