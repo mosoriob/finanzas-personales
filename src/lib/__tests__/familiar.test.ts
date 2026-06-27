@@ -3,6 +3,7 @@ import {
   matchesHouseholdFilter,
   householdFilterLabel,
   HOUSEHOLD_FILTER_OPTIONS,
+  householdPendingTotals,
 } from "../familiar";
 
 describe("matchesHouseholdFilter", () => {
@@ -39,6 +40,32 @@ describe("HOUSEHOLD_FILTER_OPTIONS", () => {
       "MELIPILLA",
       "PERSONAL",
     ]);
+  });
+});
+
+describe("householdPendingTotals", () => {
+  it("sums unreimbursed expenses per household, ignoring Personal", () => {
+    const totals = householdPendingTotals([
+      { familiar: "VINA", isReimbursed: false, amount: -1000 },
+      { familiar: "VINA", isReimbursed: false, amount: -500 },
+      { familiar: "MELIPILLA", isReimbursed: false, amount: -2000 },
+      { familiar: null, isReimbursed: false, amount: -9999 },
+    ]);
+    expect(totals).toEqual({ VINA: 1500, MELIPILLA: 2000 });
+  });
+
+  it("excludes reimbursed rows and income (non-negative amounts)", () => {
+    const totals = householdPendingTotals([
+      { familiar: "VINA", isReimbursed: true, amount: -1000 },
+      { familiar: "VINA", isReimbursed: false, amount: 800 },
+      { familiar: "MELIPILLA", isReimbursed: false, amount: 0 },
+      { familiar: "MELIPILLA", isReimbursed: false, amount: -300 },
+    ]);
+    expect(totals).toEqual({ VINA: 0, MELIPILLA: 300 });
+  });
+
+  it("returns zeros for an empty set", () => {
+    expect(householdPendingTotals([])).toEqual({ VINA: 0, MELIPILLA: 0 });
   });
 });
 

@@ -92,6 +92,30 @@ export function matchesHouseholdFilter(
   return filter === "todos" || familiar === dropdownValueToFamiliar(filter);
 }
 
+/**
+ * Pending reimbursement, broken down per household.
+ *
+ * Counts only real money owed: unreimbursed expenses (negative amounts) that
+ * belong to a household. Personal rows and income are ignored. The result is
+ * a positive magnitude per household (Viña vs Melipilla pay me back
+ * separately), naturally yielding 0 for a household with no pending rows —
+ * including when a household filter has already excluded it from the input.
+ */
+export function householdPendingTotals(
+  transactions: readonly {
+    familiar: Familiar | null;
+    isReimbursed: boolean;
+    amount: number;
+  }[],
+): Record<Familiar, number> {
+  const totals: Record<Familiar, number> = { VINA: 0, MELIPILLA: 0 };
+  for (const t of transactions) {
+    if (t.familiar === null || t.isReimbursed || t.amount >= 0) continue;
+    totals[t.familiar] += Math.abs(t.amount);
+  }
+  return totals;
+}
+
 /** Short label for the active-filter pill (filter must not be "todos"). */
 export function householdFilterLabel(filter: HouseholdFilter): string {
   if (filter === "todos") return "";

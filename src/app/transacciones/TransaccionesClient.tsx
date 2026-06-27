@@ -30,6 +30,8 @@ import {
   dropdownValueToFamiliar,
   matchesHouseholdFilter,
   householdFilterLabel,
+  householdPendingTotals,
+  FAMILIAR_SHORT_LABEL,
   type Familiar,
   type FamiliarDropdownValue,
   type HouseholdFilter,
@@ -415,9 +417,7 @@ export function TransaccionesClient({
   const summaryIncome = filtered
     .filter((t) => t.amount > 0)
     .reduce((acc, t) => acc + t.amount, 0);
-  const summaryPendingReimbursement = filtered
-    .filter((t) => t.familiar !== null && !t.isReimbursed && t.amount < 0)
-    .reduce((acc, t) => acc + Math.abs(t.amount), 0);
+  const pendingByHousehold = householdPendingTotals(filtered);
 
   const hasActiveFilters =
     search.trim() !== '' ||
@@ -547,12 +547,27 @@ export function TransaccionesClient({
           </p>
         </div>
         <div className="bg-[#f9f9f9] rounded-[20px] p-4 md:p-7">
-          <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">
+          <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">
             Pendiente Devolución
           </p>
-          <p className="text-2xl md:text-3xl font-semibold text-orange-500">
-            {formatCLP(summaryPendingReimbursement)}
-          </p>
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-medium text-gray-500">
+                {FAMILIAR_SHORT_LABEL.VINA}
+              </span>
+              <span className="text-base md:text-lg font-semibold text-orange-500">
+                {formatCLP(pendingByHousehold.VINA)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-medium text-gray-500">
+                {FAMILIAR_SHORT_LABEL.MELIPILLA}
+              </span>
+              <span className="text-base md:text-lg font-semibold text-orange-500">
+                {formatCLP(pendingByHousehold.MELIPILLA)}
+              </span>
+            </div>
+          </div>
         </div>
       </div>
 
