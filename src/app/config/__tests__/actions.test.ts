@@ -15,6 +15,7 @@ vi.mock("@/lib/db", () => ({
       delete: vi.fn(),
     },
     transaction: {
+      findMany: vi.fn(),
       updateMany: vi.fn(),
     },
     rule: {
@@ -34,6 +35,8 @@ import {
   createRule,
   updateRule,
   deleteRule,
+  previewApplyRules,
+  applyRulesToExisting,
 } from "../actions";
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
@@ -46,6 +49,7 @@ const mockPrisma = prisma as unknown as {
     delete: ReturnType<typeof vi.fn>;
   };
   transaction: {
+    findMany: ReturnType<typeof vi.fn>;
     updateMany: ReturnType<typeof vi.fn>;
   };
   rule: {
@@ -277,5 +281,92 @@ describe("deleteRule", () => {
     await deleteRule(1);
     expect(mockPrisma.rule.delete).toHaveBeenCalledWith({ where: { id: 1 } });
     expect(revalidatePath).toHaveBeenCalledWith("/config");
+  });
+});
+
+// ─── previewApplyRules ───
+
+describe("previewApplyRules", () => {
+  it("errors when the \"Otro\" category does not exist", async () => {
+    mockPrisma.category.findFirst.mockResolvedValue(null);
+    const result = await previewApplyRules();
+    expect(result).toEqual({ ok: false, error: expect.any(String) });
+  });
+
+  it("counts only \"Otro\" transactions whose description now matches a rule", async () => {
+    mockPrisma.category.findFirst.mockResolvedValue({ id: 99, name: "Otro" });
+    mockPrisma.transaction.findMany.mockResolvedValue([
+      { id: 1, description: "COMPRA JUMBO MAIPU" },
+      { id: 2, description: "PAGO DESCONOCIDO" },
+      { id: 3, description: "MERPAGO*UBER TRIP" },
+    ]);
+    mockPrisma.rule.findMany.mockResolvedValue([
+      { id: 10, match: "JUMBO", categoryId: 1 },
+      { id: 11, match: "UBER", categoryId: 2 },
+    ]);
+
+    const result = await previewApplyRules();
+    expect(result).toEqual({ ok: true, count: 2 });
+  });
+
+  it("does not count a transaction whose matching rule points back at \"Otro\"", async () => {
+    mockPrisma.category.findFirst.mockResolvedValue({ id: 99, name: "Otro" });
+    mockPrisma.transaction.findMany.mockResolvedValue([
+      { id: 1, description: "COMPRA JUMBO MAIPU" },
+    ]);
+    mockPrisma.rule.findMany.mockResolvedValue([
+      { id: 10, match: "JUMBO", categoryId: 99 },
+    ]);
+
+    const result = await previewApplyRules();
+    expect(result).toEqual({ ok: true, count: 0 });
+  });
+});
+
+// ─── applyRulesToExisting ───
+
+describe("applyRulesToExisting", () => {
+  it("updates matching transactions grouped by category and reports the count", async () => {
+    mockPrisma.category.findFirst.mockResolvedValue({ id: 99, name: "Otro" });
+    mockPrisma.transaction.findMany.mockResolvedValue([
+      { id: 1, description: "COMPRA JUMBO MAIPU" },
+      { id: 2, description: "OTRO JUMBO" },
+      { id: 3, description: "MERPAGO*UBER TRIP" },
+      { id: 4, description: "NADA QUE VER" },
+    ]);
+    mockPrisma.rule.findMany.mockResolvedValue([
+      { id: 10, match: "JUMBO", categoryId: 1 },
+      { id: 11, match: "UBER", categoryId: 2 },
+    ]);
+    mockPrisma.$transaction.mockResolvedValue([]);
+
+    const result = await applyRulesToExisting();
+    expect(result).toEqual({ ok: true, updated: 3 });
+
+    // One updateMany per target category (JUMBO→1 for ids 1,2; UBER→2 for id 3).
+    expect(mockPrisma.transaction.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: [1, 2] } },
+      data: { categoryId: 1 },
+    });
+    expect(mockPrisma.transaction.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: [3] } },
+      data: { categoryId: 2 },
+    });
+    expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(revalidatePath).toHaveBeenCalledWith("/transacciones");
+  });
+
+  it("reports 0 and skips the batch when nothing matches", async () => {
+    mockPrisma.category.findFirst.mockResolvedValue({ id: 99, name: "Otro" });
+    mockPrisma.transaction.findMany.mockResolvedValue([
+      { id: 1, description: "NADA QUE VER" },
+    ]);
+    mockPrisma.rule.findMany.mockResolvedValue([
+      { id: 10, match: "JUMBO", categoryId: 1 },
+    ]);
+
+    const result = await applyRulesToExisting();
+    expect(result).toEqual({ ok: true, updated: 0 });
+    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
   });
 });

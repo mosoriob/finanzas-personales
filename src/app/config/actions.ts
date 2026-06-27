@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/db";
+import { matchCategory } from "@/lib/rules";
 import { revalidatePath } from "next/cache";
 
 export async function createAccount(formData: FormData) {
@@ -203,4 +204,85 @@ export async function updateRule(
 export async function deleteRule(id: number): Promise<void> {
   await prisma.rule.delete({ where: { id } });
   revalidatePath("/config");
+}
+
+// ─── Apply rules to existing transactions ───
+
+export type ApplyRulesPreview =
+  | { ok: true; count: number }
+  | { ok: false; error: string };
+
+export type ApplyRulesResult =
+  | { ok: true; updated: number }
+  | { ok: false; error: string };
+
+// Computes which transactions currently in "Otro" would move to a different
+// category if the current rule set were applied. Only "Otro" transactions are
+// considered (manual categorizations are never overwritten), and a transaction
+// is included only when a rule matches AND points at a different category.
+async function computeRuleReassignments(): Promise<
+  | { ok: true; otroId: number; reassignments: { id: number; categoryId: number }[] }
+  | { ok: false; error: string }
+> {
+  const otro = await prisma.category.findFirst({ where: { name: "Otro" } });
+  if (!otro) return { ok: false, error: 'No existe la categoría "Otro"' };
+
+  const [transactions, rules] = await Promise.all([
+    prisma.transaction.findMany({
+      where: { categoryId: otro.id },
+      select: { id: true, description: true },
+    }),
+    prisma.rule.findMany({
+      select: { id: true, match: true, categoryId: true },
+    }),
+  ]);
+
+  const reassignments: { id: number; categoryId: number }[] = [];
+  for (const t of transactions) {
+    const matched = matchCategory(t.description, rules);
+    if (matched !== null && matched !== otro.id) {
+      reassignments.push({ id: t.id, categoryId: matched });
+    }
+  }
+
+  return { ok: true, otroId: otro.id, reassignments };
+}
+
+// Step 1 of "apply to existing": how many "Otro" transactions would change.
+export async function previewApplyRules(): Promise<ApplyRulesPreview> {
+  const result = await computeRuleReassignments();
+  if (!result.ok) return result;
+  return { ok: true, count: result.reassignments.length };
+}
+
+// Step 2 of "apply to existing": perform the recategorization and report how
+// many transactions were updated.
+export async function applyRulesToExisting(): Promise<ApplyRulesResult> {
+  const result = await computeRuleReassignments();
+  if (!result.ok) return result;
+
+  const { reassignments } = result;
+  if (reassignments.length === 0) return { ok: true, updated: 0 };
+
+  // Group by target category so we issue one updateMany per category.
+  const byCategory = new Map<number, number[]>();
+  for (const r of reassignments) {
+    const ids = byCategory.get(r.categoryId) ?? [];
+    ids.push(r.id);
+    byCategory.set(r.categoryId, ids);
+  }
+
+  await prisma.$transaction(
+    [...byCategory.entries()].map(([categoryId, ids]) =>
+      prisma.transaction.updateMany({
+        where: { id: { in: ids } },
+        data: { categoryId },
+      })
+    )
+  );
+
+  revalidatePath("/config");
+  revalidatePath("/transacciones");
+  revalidatePath("/");
+  return { ok: true, updated: reassignments.length };
 }
