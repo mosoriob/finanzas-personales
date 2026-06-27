@@ -4,8 +4,8 @@
  * This module is the single pure seam for the rules file format: it has no
  * database or network access, mirroring how `matchCategory` in `rules.ts` is a
  * pure seam reused by the bank sync and apply-rules action. The thin
- * `exportRules` / `importRules` server actions load/persist data and delegate
- * all format and decision logic here.
+ * `exportRules` server action loads the data and delegates all format logic
+ * here.
  *
  * Categories are referenced by **name** (and carry their emoji) rather than by
  * numeric id, so a file exported from one database imports faithfully into
