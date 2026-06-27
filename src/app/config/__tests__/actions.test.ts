@@ -321,6 +321,18 @@ describe("previewApplyRules", () => {
     const result = await previewApplyRules();
     expect(result).toEqual({ ok: true, count: 0 });
   });
+
+  it("only considers transactions currently in \"Otro\" (manual categories untouched)", async () => {
+    mockPrisma.category.findFirst.mockResolvedValue({ id: 99, name: "Otro" });
+    mockPrisma.transaction.findMany.mockResolvedValue([]);
+    mockPrisma.rule.findMany.mockResolvedValue([]);
+
+    await previewApplyRules();
+
+    expect(mockPrisma.transaction.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { categoryId: 99 } })
+    );
+  });
 });
 
 // ─── applyRulesToExisting ───

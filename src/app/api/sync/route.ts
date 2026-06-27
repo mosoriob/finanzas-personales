@@ -85,7 +85,7 @@ export async function POST(req: NextRequest) {
 
     // Process checking/savings accounts
     for (const acc of result.accounts ?? []) {
-      const accountName = acc.label || "CuentaRUT";
+      const accountName = acc.label || "Cuenta";
 
       let dbAccount = await prisma.account.findFirst({
         where: { name: accountName, bank: bankName },
