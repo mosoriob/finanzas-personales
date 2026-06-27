@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/db";
 import { matchCategory } from "@/lib/rules";
+import { serializeRules } from "@/lib/rules-io";
 import { revalidatePath } from "next/cache";
 
 export async function createAccount(formData: FormData) {
@@ -204,6 +205,23 @@ export async function updateRule(
 export async function deleteRule(id: number): Promise<void> {
   await prisma.rule.delete({ where: { id } });
   revalidatePath("/config");
+}
+
+// ─── Export rules ───
+
+// Loads all rules + categories and returns the portable JSON document as a
+// string. The client wraps this in a Blob and triggers a dated download.
+// Serialization (the versioned shape, category-by-name resolution) lives in the
+// pure `serializeRules` seam; this action is wiring only. No `/api` route is
+// introduced — consistent with the server-action-only rule CRUD.
+export async function exportRules(): Promise<string> {
+  const [rules, categories] = await Promise.all([
+    prisma.rule.findMany(),
+    prisma.category.findMany(),
+  ]);
+
+  const file = serializeRules(rules, categories, new Date());
+  return JSON.stringify(file, null, 2);
 }
 
 // ─── Apply rules to existing transactions ───

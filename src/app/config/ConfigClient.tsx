@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { createAccount, deleteAccount, createCategory, toggleAccountVisibility, updateCategory, createRule, updateRule, deleteRule, previewApplyRules, applyRulesToExisting } from "./actions";
+import { createAccount, deleteAccount, createCategory, toggleAccountVisibility, updateCategory, createRule, updateRule, deleteRule, previewApplyRules, applyRulesToExisting, exportRules } from "./actions";
 import { DeleteCategoryDialog } from "@/components/DeleteCategoryDialog";
 import { EmojiPicker } from "@/components/EmojiPicker";
 import { AUTO_CATEGORIZATION_NAMES } from "@/lib/constants";
@@ -761,6 +761,28 @@ function ReglasPanel({ rules, categories }: ReglasPanelProps) {
 
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
+  // Export rules to a portable, dated JSON file.
+  const [exportPending, setExportPending] = useState(false);
+
+  async function handleExport() {
+    setExportPending(true);
+    try {
+      const json = await exportRules();
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const today = new Date().toISOString().slice(0, 10);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `rules-${today}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } finally {
+      setExportPending(false);
+    }
+  }
+
   // "Apply rules to existing" two-step flow: preview a count, confirm, apply.
   const [applyPending, setApplyPending] = useState(false);
   const [applyPreview, setApplyPreview] = useState<number | null>(null);
@@ -878,12 +900,22 @@ function ReglasPanel({ rules, categories }: ReglasPanelProps) {
   return (
     <div className="flex flex-col gap-5">
       {/* Header */}
-      <div>
-        <h2 className="text-xl font-semibold text-gray-800">Reglas</h2>
-        <p className="text-sm text-gray-400 mt-0.5">
-          Si la descripción de una transacción contiene el texto, se asigna la categoría.
-          Los cambios se aplican en la próxima sincronización.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-semibold text-gray-800">Reglas</h2>
+          <p className="text-sm text-gray-400 mt-0.5">
+            Si la descripción de una transacción contiene el texto, se asigna la categoría.
+            Los cambios se aplican en la próxima sincronización.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={handleExport}
+          disabled={exportPending}
+          className="border border-indigo-200 text-indigo-600 rounded-xl px-5 py-2.5 text-sm font-semibold hover:bg-indigo-50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
+        >
+          {exportPending ? "Exportando…" : "Exportar reglas"}
+        </button>
       </div>
 
       {/* Create rule form */}

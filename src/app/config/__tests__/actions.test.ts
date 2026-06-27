@@ -10,6 +10,7 @@ vi.mock("@/lib/db", () => ({
   prisma: {
     category: {
       findFirst: vi.fn(),
+      findMany: vi.fn(),
       update: vi.fn(),
       findUnique: vi.fn(),
       delete: vi.fn(),
@@ -37,6 +38,7 @@ import {
   deleteRule,
   previewApplyRules,
   applyRulesToExisting,
+  exportRules,
 } from "../actions";
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
@@ -44,6 +46,7 @@ import { revalidatePath } from "next/cache";
 const mockPrisma = prisma as unknown as {
   category: {
     findFirst: ReturnType<typeof vi.fn>;
+    findMany: ReturnType<typeof vi.fn>;
     update: ReturnType<typeof vi.fn>;
     findUnique: ReturnType<typeof vi.fn>;
     delete: ReturnType<typeof vi.fn>;
@@ -281,6 +284,42 @@ describe("deleteRule", () => {
     await deleteRule(1);
     expect(mockPrisma.rule.delete).toHaveBeenCalledWith({ where: { id: 1 } });
     expect(revalidatePath).toHaveBeenCalledWith("/config");
+  });
+});
+
+// ─── exportRules ───
+
+describe("exportRules", () => {
+  it("returns the serialized JSON from loaded rules/categories (category by name+emoji)", async () => {
+    mockPrisma.rule.findMany.mockResolvedValue([
+      { id: 1, match: "Jumbo", categoryId: 10 },
+      { id: 2, match: "Uber", categoryId: 20 },
+    ]);
+    mockPrisma.category.findMany.mockResolvedValue([
+      { id: 10, name: "Supermercado", emoji: "🛒" },
+      { id: 20, name: "Transporte", emoji: "🚌" },
+    ]);
+
+    const json = await exportRules();
+    const parsed = JSON.parse(json);
+
+    expect(parsed.version).toBe(1);
+    expect(typeof parsed.exportedAt).toBe("string");
+    expect(parsed.rules).toEqual([
+      { match: "Jumbo", category: { name: "Supermercado", emoji: "🛒" } },
+      { match: "Uber", category: { name: "Transporte", emoji: "🚌" } },
+    ]);
+  });
+
+  it("returns a valid file with an empty rules array when there are no rules", async () => {
+    mockPrisma.rule.findMany.mockResolvedValue([]);
+    mockPrisma.category.findMany.mockResolvedValue([]);
+
+    const json = await exportRules();
+    const parsed = JSON.parse(json);
+
+    expect(parsed.version).toBe(1);
+    expect(parsed.rules).toEqual([]);
   });
 });
 
