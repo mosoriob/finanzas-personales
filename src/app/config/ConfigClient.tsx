@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { createAccount, deleteAccount, createCategory, toggleAccountVisibility, updateCategory, createRule, updateRule, deleteRule } from "./actions";
+import { createAccount, deleteAccount, createCategory, toggleAccountVisibility, updateCategory, createRule, updateRule, deleteRule, previewApplyRules, applyRulesToExisting } from "./actions";
 import { DeleteCategoryDialog } from "@/components/DeleteCategoryDialog";
 import { AUTO_CATEGORIZATION_NAMES } from "@/lib/constants";
 
@@ -760,6 +760,50 @@ function ReglasPanel({ rules, categories }: ReglasPanelProps) {
 
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
+  // "Apply rules to existing" two-step flow: preview a count, confirm, apply.
+  const [applyPending, setApplyPending] = useState(false);
+  const [applyPreview, setApplyPreview] = useState<number | null>(null);
+  const [applyResult, setApplyResult] = useState<string | null>(null);
+  const [applyError, setApplyError] = useState<string | null>(null);
+
+  async function handlePreviewApply() {
+    setApplyPending(true);
+    setApplyError(null);
+    setApplyResult(null);
+    try {
+      const result = await previewApplyRules();
+      if (result.ok) {
+        setApplyPreview(result.count);
+      } else {
+        setApplyError(result.error);
+      }
+    } finally {
+      setApplyPending(false);
+    }
+  }
+
+  async function handleConfirmApply() {
+    setApplyPending(true);
+    setApplyError(null);
+    try {
+      const result = await applyRulesToExisting();
+      if (result.ok) {
+        setApplyResult(
+          `${result.updated} ${result.updated === 1 ? "transacción recategorizada" : "transacciones recategorizadas"}.`
+        );
+      } else {
+        setApplyError(result.error);
+      }
+    } finally {
+      setApplyPending(false);
+      setApplyPreview(null);
+    }
+  }
+
+  function cancelApply() {
+    setApplyPreview(null);
+  }
+
   async function handleCreate() {
     if (!newMatch.trim()) {
       setCreateError("El texto a buscar no puede estar vacío");
@@ -893,6 +937,62 @@ function ReglasPanel({ rules, categories }: ReglasPanelProps) {
           </div>
         )}
       </div>
+
+      {/* Apply rules to existing transactions */}
+      <div className="bg-white rounded-2xl border border-gray-100 p-5">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-700">Aplicar a transacciones existentes</h3>
+            <p className="text-sm text-gray-400 mt-0.5">
+              Recategoriza las transacciones que están en «Otro» usando las reglas actuales. No toca las que ya categorizaste a mano.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handlePreviewApply}
+            disabled={applyPending || rules.length === 0}
+            className="bg-indigo-500 text-white rounded-xl px-6 py-2.5 text-sm font-semibold hover:bg-indigo-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
+          >
+            {applyPending ? "Procesando…" : "Aplicar reglas"}
+          </button>
+        </div>
+        {applyResult && <p className="text-xs text-green-600 mt-3 pl-1">{applyResult}</p>}
+        {applyError && <p className="text-xs text-red-500 mt-3 pl-1">{applyError}</p>}
+      </div>
+
+      {/* Confirmation dialog for "apply to existing" */}
+      {applyPreview !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6">
+            <h3 className="text-lg font-semibold text-gray-800">Confirmar recategorización</h3>
+            <p className="text-sm text-gray-500 mt-2">
+              {applyPreview === 0
+                ? "Ninguna transacción en «Otro» coincide con tus reglas. No se hará ningún cambio."
+                : `Se recategorizarán ${applyPreview} ${applyPreview === 1 ? "transacción" : "transacciones"} actualmente en «Otro». ¿Continuar?`}
+            </p>
+            <div className="flex justify-end gap-2 mt-5">
+              <button
+                type="button"
+                onClick={cancelApply}
+                disabled={applyPending}
+                className="text-sm border border-gray-200 text-gray-500 rounded-xl px-4 py-2 hover:bg-gray-50 transition-colors disabled:opacity-60"
+              >
+                Cancelar
+              </button>
+              {applyPreview > 0 && (
+                <button
+                  type="button"
+                  onClick={handleConfirmApply}
+                  disabled={applyPending}
+                  className="text-sm bg-indigo-500 text-white rounded-xl px-4 py-2 font-semibold hover:bg-indigo-600 transition-colors disabled:opacity-60"
+                >
+                  {applyPending ? "Aplicando…" : "Confirmar"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Rules list */}
       {rules.length === 0 ? (
