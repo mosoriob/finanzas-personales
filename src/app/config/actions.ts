@@ -140,10 +140,13 @@ async function findRuleByMatch(match: string, excludeId?: number) {
   );
 }
 
-export async function createRule(data: {
-  match: string;
-  categoryId: number;
-}): Promise<RuleMutationResult> {
+// Shared validation for createRule/updateRule. On success returns the trimmed
+// match text so callers don't re-trim. `excludeId` skips a rule when checking
+// for duplicates (so a rule can keep its own match text on update).
+async function validateRuleInput(
+  data: { match: string; categoryId: number },
+  excludeId?: number
+): Promise<{ ok: true; match: string } | { ok: false; error: string }> {
   const trimmedMatch = data.match.trim();
   if (!trimmedMatch) {
     return { ok: false, error: "El texto a buscar no puede estar vacío" };
@@ -154,13 +157,23 @@ export async function createRule(data: {
   });
   if (!category) return { ok: false, error: "Categoría no encontrada" };
 
-  const duplicate = await findRuleByMatch(trimmedMatch);
+  const duplicate = await findRuleByMatch(trimmedMatch, excludeId);
   if (duplicate) {
     return { ok: false, error: "Ya existe una regla con ese texto" };
   }
 
+  return { ok: true, match: trimmedMatch };
+}
+
+export async function createRule(data: {
+  match: string;
+  categoryId: number;
+}): Promise<RuleMutationResult> {
+  const validation = await validateRuleInput(data);
+  if (!validation.ok) return validation;
+
   await prisma.rule.create({
-    data: { match: trimmedMatch, categoryId: data.categoryId },
+    data: { match: validation.match, categoryId: data.categoryId },
   });
 
   revalidatePath("/config");
@@ -171,24 +184,12 @@ export async function updateRule(
   id: number,
   data: { match: string; categoryId: number }
 ): Promise<RuleMutationResult> {
-  const trimmedMatch = data.match.trim();
-  if (!trimmedMatch) {
-    return { ok: false, error: "El texto a buscar no puede estar vacío" };
-  }
-
-  const category = await prisma.category.findUnique({
-    where: { id: data.categoryId },
-  });
-  if (!category) return { ok: false, error: "Categoría no encontrada" };
-
-  const duplicate = await findRuleByMatch(trimmedMatch, id);
-  if (duplicate) {
-    return { ok: false, error: "Ya existe una regla con ese texto" };
-  }
+  const validation = await validateRuleInput(data, id);
+  if (!validation.ok) return validation;
 
   await prisma.rule.update({
     where: { id },
-    data: { match: trimmedMatch, categoryId: data.categoryId },
+    data: { match: validation.match, categoryId: data.categoryId },
   });
 
   revalidatePath("/config");
