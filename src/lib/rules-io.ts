@@ -149,7 +149,6 @@ export function planImport(
   );
 
   const toCreate: PlannedRule[] = [];
-  const created: string[] = [];
   const skippedExisting: string[] = [];
 
   for (const entry of fileRules) {
@@ -161,8 +160,8 @@ export function planImport(
     const categoryId = categoryIdByName.get(entry.category.name);
     if (categoryId === undefined) continue; // category auto-create: later slice
     toCreate.push({ match, categoryId });
-    created.push(match);
   }
 
+  const created = toCreate.map((r) => r.match);
   return { toCreate, report: { created, skippedExisting } };
 }
