@@ -24,9 +24,11 @@ import { TransactionCard } from '@/components/transaction-card';
 import { CreateTransactionModal } from '@/components/CreateTransactionModal';
 import { DeleteConfirmDialog } from '@/components/DeleteConfirmDialog';
 import {
-  FAMILIAR_LONG_LABEL,
-  PERSONAL_LABEL,
+  FAMILIAR_DROPDOWN_OPTIONS,
+  familiarToDropdownValue,
+  dropdownValueToFamiliar,
   type Familiar,
+  type FamiliarDropdownValue,
 } from '@/lib/familiar';
 
 type Account = {
@@ -54,7 +56,7 @@ type Transaction = {
 
 type OptimisticUpdate =
   | { type: 'category'; txId: number; category: Category }
-  | { type: 'shared'; txId: number; familiar: Familiar | null; isReimbursed: boolean }
+  | { type: 'familiar'; txId: number; familiar: Familiar | null; isReimbursed: boolean }
   | { type: 'note'; txId: number; note: string | null }
   | { type: 'create'; transaction: Transaction }
   | { type: 'delete'; id: number };
@@ -128,16 +130,6 @@ function PlusIcon() {
 
 type SharedFilter = 'todos' | 'familiares' | 'no-familiares';
 
-type FamiliarDropdownValue = 'PERSONAL' | 'VINA' | 'MELIPILLA';
-
-function familiarToDropdownValue(f: Familiar | null): FamiliarDropdownValue {
-  return f ?? 'PERSONAL';
-}
-
-function dropdownValueToFamiliar(v: FamiliarDropdownValue): Familiar | null {
-  return v === 'PERSONAL' ? null : v;
-}
-
 interface Props {
   transactions: Transaction[];
   accounts: Account[];
@@ -207,7 +199,7 @@ export function TransaccionesClient({
       if (update.type === 'delete') {
         return state.filter((t) => t.id !== update.id);
       }
-      // update is one of category | shared | note here
+      // update is one of category | familiar | note here
       const nonDeleteUpdate = update;
       return state.map((t) => {
         if (t.id !== nonDeleteUpdate.txId) return t;
@@ -290,7 +282,7 @@ export function TransaccionesClient({
 
     startSharedTransition(async () => {
       applyOptimistic({
-        type: 'shared',
+        type: 'familiar',
         txId,
         familiar: newFamiliar,
         isReimbursed: newIsReimbursed,
@@ -313,7 +305,7 @@ export function TransaccionesClient({
 
     startSharedTransition(async () => {
       applyOptimistic({
-        type: 'shared',
+        type: 'familiar',
         txId,
         familiar: current.familiar,
         isReimbursed: newIsReimbursed,
@@ -838,11 +830,11 @@ export function TransaccionesClient({
                           }
                           className="text-xs border border-indigo-100 rounded-full px-2 py-1 outline-none cursor-pointer bg-white hover:border-indigo-200 focus:border-violet-400 transition-colors"
                         >
-                          <option value="PERSONAL">{PERSONAL_LABEL}</option>
-                          <option value="VINA">{FAMILIAR_LONG_LABEL.VINA}</option>
-                          <option value="MELIPILLA">
-                            {FAMILIAR_LONG_LABEL.MELIPILLA}
-                          </option>
+                          {FAMILIAR_DROPDOWN_OPTIONS.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
                         </select>
                       </td>
                       <td className="py-3 pr-4 text-center">

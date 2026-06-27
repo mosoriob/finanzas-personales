@@ -3,9 +3,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { createTransaction, CreateTransactionResult } from '@/app/transacciones/actions';
 import {
-  FAMILIAR_LONG_LABEL,
-  PERSONAL_LABEL,
+  FAMILIAR_DROPDOWN_OPTIONS,
+  dropdownValueToFamiliar,
   type Familiar,
+  type FamiliarDropdownValue,
 } from '@/lib/familiar';
 
 type Account = {
@@ -32,12 +33,6 @@ type TransactionRow = {
   account: Account;
   category: Category;
 };
-
-type FamiliarDropdownValue = 'PERSONAL' | 'VINA' | 'MELIPILLA';
-
-function dropdownValueToFamiliar(v: FamiliarDropdownValue): Familiar | null {
-  return v === 'PERSONAL' ? null : v;
-}
 
 interface Props {
   accounts: Account[];
@@ -399,9 +394,11 @@ export function CreateTransactionModal({
                   }}
                   className="w-full border border-indigo-100 rounded-xl px-3 py-2.5 text-sm text-gray-700 outline-none focus:border-violet-400 transition-colors bg-white cursor-pointer"
                 >
-                  <option value="PERSONAL">{PERSONAL_LABEL}</option>
-                  <option value="VINA">{FAMILIAR_LONG_LABEL.VINA}</option>
-                  <option value="MELIPILLA">{FAMILIAR_LONG_LABEL.MELIPILLA}</option>
+                  {FAMILIAR_DROPDOWN_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
                 </select>
               </div>
 

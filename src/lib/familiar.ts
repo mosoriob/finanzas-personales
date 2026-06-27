@@ -32,3 +32,34 @@ export const FAMILIAR_SHORT_LABEL: Record<Familiar, string> = {
 };
 
 export const PERSONAL_LABEL = "Personal";
+
+/**
+ * The household dropdowns model "Personal" as an explicit option, since a
+ * <select> cannot carry a null value. `dropdownValueToFamiliar` converts back
+ * to the nullable form persisted on the transaction.
+ */
+export type FamiliarDropdownValue = "PERSONAL" | Familiar;
+
+export function familiarToDropdownValue(
+  familiar: Familiar | null,
+): FamiliarDropdownValue {
+  return familiar ?? "PERSONAL";
+}
+
+export function dropdownValueToFamiliar(
+  value: FamiliarDropdownValue,
+): Familiar | null {
+  return value === "PERSONAL" ? null : value;
+}
+
+/** Options for the household <select>, in display order. */
+export const FAMILIAR_DROPDOWN_OPTIONS: {
+  value: FamiliarDropdownValue;
+  label: string;
+}[] = [
+  { value: "PERSONAL", label: PERSONAL_LABEL },
+  ...FAMILIAR_VALUES.map((value) => ({
+    value,
+    label: FAMILIAR_LONG_LABEL[value],
+  })),
+];

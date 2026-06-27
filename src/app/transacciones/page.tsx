@@ -5,7 +5,7 @@ import {
   getDateFilterForMonth,
   parsePageParam,
 } from "@/lib/month-utils";
-import { isFamiliar, type Familiar } from "@/lib/familiar";
+import { isFamiliar } from "@/lib/familiar";
 
 export const dynamic = "force-dynamic";
 
@@ -60,7 +60,7 @@ export default async function TransaccionesPage({
     description: t.description,
     note: t.note,
     amount: t.amount,
-    familiar: (isFamiliar(t.familiar) ? t.familiar : null) as Familiar | null,
+    familiar: isFamiliar(t.familiar) ? t.familiar : null,
     isReimbursed: t.isReimbursed,
     account: { id: t.account.id, name: t.account.name },
     category: { id: t.category.id, name: t.category.name, emoji: t.category.emoji },
