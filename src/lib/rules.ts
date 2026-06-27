@@ -28,16 +28,18 @@ export function matchCategory(
   const haystack = description.toLowerCase();
 
   let winner: MatchableRule | null = null;
+  let winnerLength = 0;
   for (const rule of rules) {
     const needle = rule.match.toLowerCase();
     if (!needle || !haystack.includes(needle)) continue;
 
     if (
       winner === null ||
-      needle.length > winner.match.length ||
-      (needle.length === winner.match.length && rule.id < winner.id)
+      needle.length > winnerLength ||
+      (needle.length === winnerLength && rule.id < winner.id)
     ) {
       winner = rule;
+      winnerLength = needle.length;
     }
   }
 

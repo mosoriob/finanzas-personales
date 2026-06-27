@@ -114,24 +114,19 @@ async function main() {
     { match: 'Consorcio Seguros', category: 'Seguros' },
   ];
 
-  let ruleCount = 0;
+  // Idempotent: upsert on the unique `match` so re-seeding refreshes the
+  // category instead of duplicating rules.
   for (const r of ruleSeeds) {
     const categoryId = catMap[r.category];
     if (!categoryId) throw new Error(`Unknown category for rule: ${r.category}`);
-    // Idempotent + case-insensitive safe: skip if a rule already exists for
-    // this match (the DB unique index is COLLATE NOCASE).
-    const existing = await prisma.rule.findFirst({
-      where: { match: { equals: r.match } },
+    await prisma.rule.upsert({
+      where: { match: r.match },
+      update: { categoryId },
+      create: { match: r.match, categoryId },
     });
-    if (existing) {
-      await prisma.rule.update({ where: { id: existing.id }, data: { categoryId } });
-    } else {
-      await prisma.rule.create({ data: { match: r.match, categoryId } });
-    }
-    ruleCount++;
   }
 
-  console.log(`Seeded ${ruleCount} rules`);
+  console.log(`Seeded ${ruleSeeds.length} rules`);
 }
 
 main()
