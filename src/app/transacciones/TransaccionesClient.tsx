@@ -32,6 +32,7 @@ import {
   householdFilterLabel,
   householdPendingTotals,
   FAMILIAR_SHORT_LABEL,
+  FAMILIAR_VALUES,
   type Familiar,
   type FamiliarDropdownValue,
   type HouseholdFilter,
@@ -551,22 +552,19 @@ export function TransaccionesClient({
             Pendiente Devolución
           </p>
           <div className="flex flex-col gap-1">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-medium text-gray-500">
-                {FAMILIAR_SHORT_LABEL.VINA}
-              </span>
-              <span className="text-base md:text-lg font-semibold text-orange-500">
-                {formatCLP(pendingByHousehold.VINA)}
-              </span>
-            </div>
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-medium text-gray-500">
-                {FAMILIAR_SHORT_LABEL.MELIPILLA}
-              </span>
-              <span className="text-base md:text-lg font-semibold text-orange-500">
-                {formatCLP(pendingByHousehold.MELIPILLA)}
-              </span>
-            </div>
+            {FAMILIAR_VALUES.map((household) => (
+              <div
+                key={household}
+                className="flex items-center justify-between gap-2"
+              >
+                <span className="text-xs font-medium text-gray-500">
+                  {FAMILIAR_SHORT_LABEL[household]}
+                </span>
+                <span className="text-base md:text-lg font-semibold text-orange-500">
+                  {formatCLP(pendingByHousehold[household])}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
       </div>
