@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { createAccount, deleteAccount, createCategory, toggleAccountVisibility } from "./actions";
+import { createAccount, deleteAccount, createCategory, toggleAccountVisibility, updateCategory } from "./actions";
+import { DeleteCategoryDialog } from "@/components/DeleteCategoryDialog";
+import { AUTO_CATEGORIZATION_NAMES } from "@/lib/constants";
 
 const BANKS = [
   "Banco de Chile",
@@ -458,6 +460,44 @@ function CategoriasPanel({
   isPending,
   onCreateCategory,
 }: CategoriasPanelProps) {
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editEmoji, setEditEmoji] = useState("");
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editPending, setEditPending] = useState(false);
+  const [deletingCategory, setDeletingCategory] = useState<Category | null>(null);
+
+  function startEdit(cat: Category) {
+    setEditingId(cat.id);
+    setEditName(cat.name);
+    setEditEmoji(cat.emoji);
+    setEditError(null);
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditError(null);
+  }
+
+  async function handleSaveEdit(cat: Category) {
+    if (!editName.trim()) {
+      setEditError("El nombre no puede estar vacío");
+      return;
+    }
+    setEditPending(true);
+    setEditError(null);
+    try {
+      const result = await updateCategory(cat.id, { name: editName, emoji: editEmoji });
+      if (result.ok) {
+        setEditingId(null);
+      } else {
+        setEditError(result.error);
+      }
+    } finally {
+      setEditPending(false);
+    }
+  }
+
   return (
     <div className="flex flex-col gap-5">
       {/* Header */}
@@ -512,33 +552,137 @@ function CategoriasPanel({
         </form>
       </div>
 
-      {/* Categories grid */}
+      {/* Categories list */}
       {categories.length === 0 ? (
         <div className="bg-white rounded-2xl border border-gray-100 px-5 py-10 text-center text-sm text-gray-400">
           No hay categorías registradas aún.
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {categories.map((cat) => (
-            <div
-              key={cat.id}
-              className="bg-[#f8f7ff] rounded-xl p-2.5 flex items-center gap-3"
-            >
-              <span className="text-xl leading-none">{cat.emoji}</span>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-700 truncate">
-                  {cat.name}
-                </p>
-                <p className="text-xs text-gray-400">
-                  {cat._count.transactions}{" "}
-                  {cat._count.transactions === 1
-                    ? "transacción"
-                    : "transacciones"}
-                </p>
-              </div>
-            </div>
-          ))}
+        <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100">
+            <h3 className="text-sm font-semibold text-gray-700">Categorías existentes</h3>
+          </div>
+          <ul className="divide-y divide-gray-100">
+            {categories.map((cat) => {
+              const isEditing = editingId === cat.id;
+              const isAutoCat = AUTO_CATEGORIZATION_NAMES.includes(cat.name);
+
+              if (isEditing) {
+                return (
+                  <li key={cat.id} className="flex flex-col gap-2 px-5 py-3.5">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={editEmoji}
+                        onChange={(e) => setEditEmoji(e.target.value)}
+                        maxLength={4}
+                        disabled={editPending}
+                        className="border border-indigo-200 rounded-lg p-2 text-sm w-14 text-center focus:outline-none focus:border-violet-400 disabled:opacity-60"
+                      />
+                      <input
+                        type="text"
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        disabled={editPending}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleSaveEdit(cat);
+                          if (e.key === "Escape") cancelEdit();
+                        }}
+                        autoFocus
+                        className="flex-1 border border-indigo-200 rounded-lg p-2 text-sm text-gray-700 focus:outline-none focus:border-violet-400 disabled:opacity-60"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleSaveEdit(cat)}
+                        disabled={editPending}
+                        className="text-xs bg-indigo-500 text-white rounded-lg px-3 py-1.5 hover:bg-indigo-600 transition-colors disabled:opacity-60 whitespace-nowrap"
+                      >
+                        {editPending ? "Guardando…" : "Guardar"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={cancelEdit}
+                        disabled={editPending}
+                        className="text-xs border border-gray-200 text-gray-500 rounded-lg px-3 py-1.5 hover:bg-gray-50 transition-colors disabled:opacity-60 whitespace-nowrap"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                    {editError && (
+                      <p className="text-xs text-red-500 pl-2">{editError}</p>
+                    )}
+                  </li>
+                );
+              }
+
+              return (
+                <li
+                  key={cat.id}
+                  className="flex items-center gap-3 px-5 py-3.5"
+                >
+                  <span className="text-xl leading-none w-7 flex-shrink-0">{cat.emoji}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-700 truncate flex items-center gap-1.5">
+                      {cat.name}
+                      {isAutoCat && (
+                        <span title="Usada por auto-categorización" className="text-amber-400 text-xs">⚠️</span>
+                      )}
+                    </p>
+                    <p className="text-xs text-gray-400">
+                      {cat._count.transactions}{" "}
+                      {cat._count.transactions === 1 ? "transacción" : "transacciones"}
+                    </p>
+                  </div>
+                  {/* Edit / Delete icons */}
+                  <div className="flex gap-1 flex-shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => startEdit(cat)}
+                      title="Editar categoría"
+                      className="text-gray-400 hover:text-indigo-500 transition-colors p-1.5 rounded-lg hover:bg-indigo-50"
+                    >
+                      <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+                        <path
+                          d="M10.5 1.5L13.5 4.5L5 13H2V10L10.5 1.5Z"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDeletingCategory(cat)}
+                      title="Eliminar categoría"
+                      className="text-gray-400 hover:text-red-500 transition-colors p-1.5 rounded-lg hover:bg-red-50"
+                    >
+                      <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+                        <path
+                          d="M2 4H13M6 4V2.5H9V4M5 4V12H10V4"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
         </div>
+      )}
+
+      {/* Delete dialog */}
+      {deletingCategory && (
+        <DeleteCategoryDialog
+          category={deletingCategory}
+          allCategories={categories}
+          onClose={() => setDeletingCategory(null)}
+          onDeleted={() => setDeletingCategory(null)}
+        />
       )}
     </div>
   );
