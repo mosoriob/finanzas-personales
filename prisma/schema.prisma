@@ -24,6 +24,19 @@ model Category {
   name         String        @unique
   emoji        String        @default("📌")
   transactions Transaction[]
+  rules        Rule[]
+}
+
+model Rule {
+  id         Int      @id @default(autoincrement())
+  // Stored as entered (casing preserved); compared case-insensitively.
+  // A case-insensitive UNIQUE index (COLLATE NOCASE) is added in the migration.
+  match      String   @unique
+  categoryId Int
+  category   Category @relation(fields: [categoryId], references: [id])
+  createdAt  DateTime @default(now())
+
+  @@index([categoryId])
 }
 
 model Transaction {
@@ -34,7 +47,7 @@ model Transaction {
   amount       Int
   accountId    Int
   categoryId   Int
-  isShared     Boolean  @default(false)
+  familiar     String?
   isReimbursed Boolean  @default(false)
   account      Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
   category     Category @relation(fields: [categoryId], references: [id])

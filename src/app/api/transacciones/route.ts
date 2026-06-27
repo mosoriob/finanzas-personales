@@ -5,6 +5,7 @@ import {
   getDateFilterForMonth,
   parsePageParam,
 } from "@/lib/month-utils";
+import { isFamiliar } from "@/lib/familiar";
 
 export const dynamic = "force-dynamic";
 
@@ -42,7 +43,7 @@ export async function GET(request: NextRequest) {
       description: t.description,
       note: t.note,
       amount: t.amount,
-      isShared: t.isShared,
+      familiar: isFamiliar(t.familiar) ? t.familiar : null,
       isReimbursed: t.isReimbursed,
       account: { id: t.account.id, name: t.account.name },
       category: {

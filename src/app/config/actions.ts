@@ -115,6 +115,10 @@ export async function deleteCategory(
       where: { categoryId: id },
       data: { categoryId: replacementCategoryId },
     }),
+    prisma.rule.updateMany({
+      where: { categoryId: id },
+      data: { categoryId: replacementCategoryId },
+    }),
     prisma.category.delete({ where: { id } }),
   ]);
 
@@ -122,4 +126,81 @@ export async function deleteCategory(
   revalidatePath("/transacciones");
   revalidatePath("/");
   return { ok: true };
+}
+
+// ─── Rules ───
+
+export type RuleMutationResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+async function findRuleByMatch(match: string, excludeId?: number) {
+  // SQLite (via Prisma) has no `mode: "insensitive"`, so compare case-insensitively
+  // in memory. The DB still enforces a COLLATE NOCASE UNIQUE index as a backstop.
+  const needle = match.trim().toLowerCase();
+  const rules = await prisma.rule.findMany();
+  return rules.find(
+    (r) => r.match.trim().toLowerCase() === needle && r.id !== excludeId
+  );
+}
+
+// Shared validation for createRule/updateRule. On success returns the trimmed
+// match text so callers don't re-trim. `excludeId` skips a rule when checking
+// for duplicates (so a rule can keep its own match text on update).
+async function validateRuleInput(
+  data: { match: string; categoryId: number },
+  excludeId?: number
+): Promise<{ ok: true; match: string } | { ok: false; error: string }> {
+  const trimmedMatch = data.match.trim();
+  if (!trimmedMatch) {
+    return { ok: false, error: "El texto a buscar no puede estar vacío" };
+  }
+
+  const category = await prisma.category.findUnique({
+    where: { id: data.categoryId },
+  });
+  if (!category) return { ok: false, error: "Categoría no encontrada" };
+
+  const duplicate = await findRuleByMatch(trimmedMatch, excludeId);
+  if (duplicate) {
+    return { ok: false, error: "Ya existe una regla con ese texto" };
+  }
+
+  return { ok: true, match: trimmedMatch };
+}
+
+export async function createRule(data: {
+  match: string;
+  categoryId: number;
+}): Promise<RuleMutationResult> {
+  const validation = await validateRuleInput(data);
+  if (!validation.ok) return validation;
+
+  await prisma.rule.create({
+    data: { match: validation.match, categoryId: data.categoryId },
+  });
+
+  revalidatePath("/config");
+  return { ok: true };
+}
+
+export async function updateRule(
+  id: number,
+  data: { match: string; categoryId: number }
+): Promise<RuleMutationResult> {
+  const validation = await validateRuleInput(data, id);
+  if (!validation.ok) return validation;
+
+  await prisma.rule.update({
+    where: { id },
+    data: { match: validation.match, categoryId: data.categoryId },
+  });
+
+  revalidatePath("/config");
+  return { ok: true };
+}
+
+export async function deleteRule(id: number): Promise<void> {
+  await prisma.rule.delete({ where: { id } });
+  revalidatePath("/config");
 }
