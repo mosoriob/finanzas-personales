@@ -7,10 +7,13 @@ import {
   useTransition,
   useEffect,
   useRef,
+  useCallback,
 } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { formatCLP } from '@/lib/format';
 import { CategoryPicker } from '@/components/CategoryPicker';
+import { MonthPicker } from '@/components/MonthPicker';
+import { Pagination } from '@/components/Pagination';
 import {
   updateTransactionCategory,
   updateSharedFlags,
@@ -124,14 +127,23 @@ interface Props {
   transactions: Transaction[];
   accounts: Account[];
   categories: Category[];
+  totalCount: number;
+  currentPage: number;
+  pageSize: number;
+  mes: string; // "YYYY-MM" | "todo"
 }
 
 export function TransaccionesClient({
   transactions,
   accounts,
   categories,
+  totalCount,
+  currentPage,
+  pageSize,
+  mes,
 }: Props) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [, startCategoryTransition] = useTransition();
   const [, startSharedTransition] = useTransition();
   const [, startNoteTransition] = useTransition();
@@ -154,6 +166,22 @@ export function TransaccionesClient({
   const [deletingTx, setDeletingTx] = useState<Transaction | null>(null);
 
   const [showCreateModal, setShowCreateModal] = useState(false);
+
+  // Mobile infinite scroll state
+  const [mobileItems, setMobileItems] = useState<Transaction[]>(transactions);
+  const [mobileLoading, setMobileLoading] = useState(false);
+  const [mobileHasMore, setMobileHasMore] = useState(
+    transactions.length < totalCount,
+  );
+  const [mobilePage, setMobilePage] = useState(currentPage);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  // Reset mobile items when server-side props change (month/filter change)
+  useEffect(() => {
+    setMobileItems(transactions);
+    setMobilePage(currentPage);
+    setMobileHasMore(transactions.length < totalCount);
+  }, [transactions, totalCount, currentPage]);
 
   const [optimisticTransactions, applyOptimistic] = useOptimistic(
     transactions,
@@ -189,6 +217,33 @@ export function TransaccionesClient({
     const timer = setTimeout(() => setToast(null), 3000);
     return () => clearTimeout(timer);
   }, [toast]);
+
+  // Reset to page 1 when local filters change
+  function resetPage() {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete('pagina');
+    router.push(`?${params.toString()}`);
+  }
+
+  function handleSearchChange(value: string) {
+    setSearch(value);
+    resetPage();
+  }
+
+  function handleAccountFilterChange(value: string) {
+    setAccountFilter(value);
+    resetPage();
+  }
+
+  function handleCategoryFilterChange(value: string) {
+    setCategoryFilter(value);
+    resetPage();
+  }
+
+  function handleSharedFilterChange(value: SharedFilter) {
+    setSharedFilter(value);
+    resetPage();
+  }
 
   function handleSelect(txId: number, newCategoryId: number) {
     setOpenPickerForTxId(null);
@@ -331,14 +386,15 @@ export function TransaccionesClient({
     sharedFilter,
   ]);
 
-  const totalCount = filtered.length;
-  const totalExpenses = filtered
+  // Summary bar: use filtered view within this page, but totalCount from server
+  // for the transaction count card (reflects full filtered month, not just this page).
+  const summaryExpenses = filtered
     .filter((t) => t.amount < 0)
     .reduce((acc, t) => acc + t.amount, 0);
-  const totalIncome = filtered
+  const summaryIncome = filtered
     .filter((t) => t.amount > 0)
     .reduce((acc, t) => acc + t.amount, 0);
-  const totalPendingReimbursement = filtered
+  const summaryPendingReimbursement = filtered
     .filter((t) => t.isShared && !t.isReimbursed && t.amount < 0)
     .reduce((acc, t) => acc + Math.abs(t.amount), 0);
 
@@ -348,6 +404,68 @@ export function TransaccionesClient({
     categoryFilter !== 'todas' ||
     sharedFilter !== 'todos';
 
+  // Mobile infinite scroll: load next page
+  const loadMoreMobile = useCallback(async () => {
+    if (mobileLoading || !mobileHasMore) return;
+    setMobileLoading(true);
+    try {
+      const nextPage = mobilePage + 1;
+      const params = new URLSearchParams(searchParams.toString());
+      params.set('pagina', String(nextPage));
+      const res = await fetch(`/api/transacciones?${params.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        setMobileItems((prev) => [...prev, ...data.transactions]);
+        setMobilePage(nextPage);
+        setMobileHasMore(
+          data.transactions.length > 0 &&
+            mobileItems.length + data.transactions.length < totalCount,
+        );
+      }
+    } catch (err) {
+      console.error('Error cargando más transacciones:', err);
+    } finally {
+      setMobileLoading(false);
+    }
+  }, [mobileLoading, mobileHasMore, mobilePage, mobileItems.length, totalCount, searchParams]);
+
+  // Intersection observer for infinite scroll sentinel
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          loadMoreMobile();
+        }
+      },
+      { rootMargin: '200px' },
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [loadMoreMobile]);
+
+  const mobileFiltered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return mobileItems.filter((t) => {
+      if (q) {
+        const matchesDesc = t.description.toLowerCase().includes(q);
+        const matchesAccount = t.account.name.toLowerCase().includes(q);
+        const matchesNote = t.note?.toLowerCase().includes(q) ?? false;
+        if (!matchesDesc && !matchesAccount && !matchesNote) return false;
+      }
+      if (accountFilter !== 'todas' && t.account.name !== accountFilter)
+        return false;
+      if (categoryFilter !== 'todas' && t.category.name !== categoryFilter)
+        return false;
+      if (sharedFilter === 'familiares' && !t.isShared) return false;
+      if (sharedFilter === 'no-familiares' && t.isShared) return false;
+      return true;
+    });
+  }, [mobileItems, search, accountFilter, categoryFilter, sharedFilter]);
+
   return (
     <div className="flex flex-col gap-6">
       {/* Toast */}
@@ -356,6 +474,11 @@ export function TransaccionesClient({
           {toast}
         </div>
       )}
+
+      {/* Month Picker */}
+      <div className="bg-[#f9f9f9] rounded-[20px] px-5 py-3 flex items-center">
+        <MonthPicker mes={mes} />
+      </div>
 
       {/* Create transaction modal */}
       {showCreateModal && (
@@ -392,7 +515,7 @@ export function TransaccionesClient({
             Gastos
           </p>
           <p className="text-2xl md:text-3xl font-semibold text-gray-800">
-            {formatCLP(totalExpenses)}
+            {formatCLP(summaryExpenses)}
           </p>
         </div>
         <div className="bg-[#f9f9f9] rounded-[20px] p-4 md:p-7">
@@ -400,7 +523,7 @@ export function TransaccionesClient({
             Ingresos
           </p>
           <p className="text-2xl md:text-3xl font-semibold text-green-500">
-            {formatCLP(totalIncome)}
+            {formatCLP(summaryIncome)}
           </p>
         </div>
         <div className="bg-[#f9f9f9] rounded-[20px] p-4 md:p-7">
@@ -408,7 +531,7 @@ export function TransaccionesClient({
             Pendiente Devolución
           </p>
           <p className="text-2xl md:text-3xl font-semibold text-orange-500">
-            {formatCLP(totalPendingReimbursement)}
+            {formatCLP(summaryPendingReimbursement)}
           </p>
         </div>
       </div>
@@ -422,12 +545,12 @@ export function TransaccionesClient({
             type="text"
             placeholder="Buscar por descripción, nota o cuenta..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
             className="flex-1 text-sm text-gray-700 placeholder-gray-400 bg-transparent outline-none"
           />
           {search && (
             <button
-              onClick={() => setSearch('')}
+              onClick={() => handleSearchChange('')}
               className="text-gray-300 hover:text-gray-500 transition-colors text-base leading-none"
             >
               ✕
@@ -438,7 +561,7 @@ export function TransaccionesClient({
         {/* Account filter */}
         <select
           value={accountFilter}
-          onChange={(e) => setAccountFilter(e.target.value)}
+          onChange={(e) => handleAccountFilterChange(e.target.value)}
           className={`border rounded-full text-sm px-4 py-2.5 md:py-2 outline-none cursor-pointer transition-colors w-full md:w-auto min-h-[44px] md:min-h-0 ${
             accountFilter !== 'todas'
               ? 'bg-indigo-50 border-violet-300 text-indigo-500'
@@ -456,7 +579,7 @@ export function TransaccionesClient({
         {/* Category filter */}
         <select
           value={categoryFilter}
-          onChange={(e) => setCategoryFilter(e.target.value)}
+          onChange={(e) => handleCategoryFilterChange(e.target.value)}
           className={`border rounded-full text-sm px-4 py-2.5 md:py-2 outline-none cursor-pointer transition-colors w-full md:w-auto min-h-[44px] md:min-h-0 ${
             categoryFilter !== 'todas'
               ? 'bg-indigo-50 border-violet-300 text-indigo-500'
@@ -474,7 +597,7 @@ export function TransaccionesClient({
         {/* Shared filter */}
         <select
           value={sharedFilter}
-          onChange={(e) => setSharedFilter(e.target.value as SharedFilter)}
+          onChange={(e) => handleSharedFilterChange(e.target.value as SharedFilter)}
           className={`border rounded-full text-sm px-4 py-2.5 md:py-2 outline-none cursor-pointer transition-colors w-full md:w-auto min-h-[44px] md:min-h-0 ${
             sharedFilter !== 'todos'
               ? 'bg-indigo-50 border-violet-300 text-indigo-500'
@@ -503,7 +626,7 @@ export function TransaccionesClient({
               <span className="flex items-center gap-1.5 bg-indigo-50 border border-violet-300 text-indigo-500 rounded-full text-sm px-3 py-1">
                 &ldquo;{search.trim()}&rdquo;
                 <button
-                  onClick={() => setSearch('')}
+                  onClick={() => handleSearchChange('')}
                   className="hover:text-indigo-700 transition-colors leading-none"
                 >
                   ✕
@@ -514,7 +637,7 @@ export function TransaccionesClient({
               <span className="flex items-center gap-1.5 bg-indigo-50 border border-violet-300 text-indigo-500 rounded-full text-sm px-3 py-1">
                 {accountFilter}
                 <button
-                  onClick={() => setAccountFilter('todas')}
+                  onClick={() => handleAccountFilterChange('todas')}
                   className="hover:text-indigo-700 transition-colors leading-none"
                 >
                   ✕
@@ -525,7 +648,7 @@ export function TransaccionesClient({
               <span className="flex items-center gap-1.5 bg-indigo-50 border border-violet-300 text-indigo-500 rounded-full text-sm px-3 py-1">
                 {categoryFilter}
                 <button
-                  onClick={() => setCategoryFilter('todas')}
+                  onClick={() => handleCategoryFilterChange('todas')}
                   className="hover:text-indigo-700 transition-colors leading-none"
                 >
                   ✕
@@ -536,7 +659,7 @@ export function TransaccionesClient({
               <span className="flex items-center gap-1.5 bg-indigo-50 border border-violet-300 text-indigo-500 rounded-full text-sm px-3 py-1">
                 {sharedFilter === 'familiares' ? 'Familiares' : 'No familiares'}
                 <button
-                  onClick={() => setSharedFilter('todos')}
+                  onClick={() => handleSharedFilterChange('todos')}
                   className="hover:text-indigo-700 transition-colors leading-none"
                 >
                   ✕
@@ -553,15 +676,15 @@ export function TransaccionesClient({
           <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-400">
             <span className="text-4xl">🔍</span>
             <p className="text-sm font-medium">
-              No se encontraron transacciones
+              No hay transacciones en este período
             </p>
             {hasActiveFilters && (
               <button
                 onClick={() => {
-                  setSearch('');
-                  setAccountFilter('todas');
-                  setCategoryFilter('todas');
-                  setSharedFilter('todos');
+                  handleSearchChange('');
+                  handleAccountFilterChange('todas');
+                  handleCategoryFilterChange('todas');
+                  handleSharedFilterChange('todos');
                 }}
                 className="text-xs text-indigo-400 hover:text-indigo-600 transition-colors underline underline-offset-2"
               >
@@ -570,183 +693,192 @@ export function TransaccionesClient({
             )}
           </div>
         ) : (
-          <table className="w-full border-collapse">
-            <thead>
-              <tr className="border-b border-gray-200">
-                <th className="text-left text-xs font-medium text-gray-400 uppercase tracking-wider pb-3 pr-4 w-[110px]">
-                  Fecha
-                </th>
-                <th className="text-left text-xs font-medium text-gray-400 uppercase tracking-wider pb-3 pr-4">
-                  Descripción
-                </th>
-                <th className="text-left text-xs font-medium text-gray-400 uppercase tracking-wider pb-3 pr-4 w-[160px]">
-                  Categoría
-                </th>
-                <th className="text-center text-xs font-medium text-gray-400 uppercase tracking-wider pb-3 pr-4 w-[80px]">
-                  Familiar
-                </th>
-                <th className="text-center text-xs font-medium text-gray-400 uppercase tracking-wider pb-3 pr-4 w-[80px]">
-                  Devuelto
-                </th>
-                <th className="text-right text-xs font-medium text-gray-400 uppercase tracking-wider pb-3 w-[140px]">
-                  Monto
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((t) => {
-                const emoji =
-                  CATEGORY_EMOJI[t.category.name] ?? t.category.emoji ?? '📌';
-                const isPositive = t.amount >= 0;
-                return (
-                  <tr
-                    key={t.id}
-                    className="group border-b border-gray-100 last:border-0 hover:bg-white/70 transition-colors"
-                  >
-                    <td className="py-3 pr-4 text-sm text-gray-400 tabular-nums">
-                      {formatDate(t.date)}
-                    </td>
-                    <td className="py-3 pr-4">
-                      <div className="flex items-center gap-2.5">
-                        <span className="text-base leading-none">{emoji}</span>
-                        <div className="flex flex-col flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-sm font-medium text-gray-700">
-                              {t.description}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => openNoteEditor(t.id, t.note)}
-                              className="text-gray-300 hover:text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-                              title="Agregar nota"
-                            >
-                              ✏️
-                            </button>
-                          </div>
-                          <span className="text-xs text-gray-400">
-                            {t.account.name}
-                          </span>
-                          {editingNoteForTxId === t.id ? (
-                            <input
-                              ref={noteInputRef}
-                              type="text"
-                              value={editingNoteValue}
-                              onChange={(e) =>
-                                setEditingNoteValue(e.target.value)
-                              }
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') saveNote(t.id);
-                                if (e.key === 'Escape')
-                                  setEditingNoteForTxId(null);
-                              }}
-                              onBlur={() => saveNote(t.id)}
-                              placeholder="Agregar nota..."
-                              className="text-xs text-gray-700 bg-white border border-indigo-200 rounded px-1.5 py-0.5 outline-none focus:border-violet-400 w-full mt-0.5"
-                            />
-                          ) : (
-                            t.note && (
-                              <span className="text-xs text-indigo-400 italic">
-                                {t.note}
+          <>
+            <table className="w-full border-collapse">
+              <thead>
+                <tr className="border-b border-gray-200">
+                  <th className="text-left text-xs font-medium text-gray-400 uppercase tracking-wider pb-3 pr-4 w-[110px]">
+                    Fecha
+                  </th>
+                  <th className="text-left text-xs font-medium text-gray-400 uppercase tracking-wider pb-3 pr-4">
+                    Descripción
+                  </th>
+                  <th className="text-left text-xs font-medium text-gray-400 uppercase tracking-wider pb-3 pr-4 w-[160px]">
+                    Categoría
+                  </th>
+                  <th className="text-center text-xs font-medium text-gray-400 uppercase tracking-wider pb-3 pr-4 w-[80px]">
+                    Familiar
+                  </th>
+                  <th className="text-center text-xs font-medium text-gray-400 uppercase tracking-wider pb-3 pr-4 w-[80px]">
+                    Devuelto
+                  </th>
+                  <th className="text-right text-xs font-medium text-gray-400 uppercase tracking-wider pb-3 w-[140px]">
+                    Monto
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((t) => {
+                  const emoji =
+                    CATEGORY_EMOJI[t.category.name] ?? t.category.emoji ?? '📌';
+                  const isPositive = t.amount >= 0;
+                  return (
+                    <tr
+                      key={t.id}
+                      className="group border-b border-gray-100 last:border-0 hover:bg-white/70 transition-colors"
+                    >
+                      <td className="py-3 pr-4 text-sm text-gray-400 tabular-nums">
+                        {formatDate(t.date)}
+                      </td>
+                      <td className="py-3 pr-4">
+                        <div className="flex items-center gap-2.5">
+                          <span className="text-base leading-none">{emoji}</span>
+                          <div className="flex flex-col flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-sm font-medium text-gray-700">
+                                {t.description}
                               </span>
-                            )
-                          )}
+                              <button
+                                type="button"
+                                onClick={() => openNoteEditor(t.id, t.note)}
+                                className="text-gray-300 hover:text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                                title="Agregar nota"
+                              >
+                                ✏️
+                              </button>
+                            </div>
+                            <span className="text-xs text-gray-400">
+                              {t.account.name}
+                            </span>
+                            {editingNoteForTxId === t.id ? (
+                              <input
+                                ref={noteInputRef}
+                                type="text"
+                                value={editingNoteValue}
+                                onChange={(e) =>
+                                  setEditingNoteValue(e.target.value)
+                                }
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') saveNote(t.id);
+                                  if (e.key === 'Escape')
+                                    setEditingNoteForTxId(null);
+                                }}
+                                onBlur={() => saveNote(t.id)}
+                                placeholder="Agregar nota..."
+                                className="text-xs text-gray-700 bg-white border border-indigo-200 rounded px-1.5 py-0.5 outline-none focus:border-violet-400 w-full mt-0.5"
+                              />
+                            ) : (
+                              t.note && (
+                                <span className="text-xs text-indigo-400 italic">
+                                  {t.note}
+                                </span>
+                              )
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="py-3 pr-4">
-                      <span className="relative inline-block">
-                        <button
-                          type="button"
-                          onClick={() => setOpenPickerForTxId(t.id)}
-                          className="cursor-pointer rounded-full transition-colors"
-                        >
-                          <CategoryBadge name={t.category.name} />
-                        </button>
-                        {openPickerForTxId === t.id && (
-                          <CategoryPicker
-                            currentCategoryId={t.category.id}
-                            categories={categories}
-                            onSelect={(newCategoryId) =>
-                              handleSelect(t.id, newCategoryId)
-                            }
-                            onClose={() => setOpenPickerForTxId(null)}
-                          />
-                        )}
-                      </span>
-                    </td>
-                    <td className="py-3 pr-4 text-center">
-                      <input
-                        type="checkbox"
-                        checked={t.isShared}
-                        onChange={() => handleSharedToggle(t.id, 'isShared')}
-                        className="h-4 w-4 cursor-pointer accent-indigo-500"
-                      />
-                    </td>
-                    <td className="py-3 pr-4 text-center">
-                      <input
-                        type="checkbox"
-                        checked={t.isReimbursed}
-                        onChange={() =>
-                          handleSharedToggle(t.id, 'isReimbursed')
-                        }
-                        disabled={!t.isShared}
-                        className="h-4 w-4 cursor-pointer accent-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed"
-                      />
-                    </td>
-                    <td className="py-3 text-right text-sm font-semibold tabular-nums">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteRequest(t)}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-red-500 flex-shrink-0"
-                          title="Eliminar transacción"
-                          aria-label="Eliminar transacción"
-                        >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 20 20"
-                            fill="currentColor"
-                            className="w-4 h-4"
+                      </td>
+                      <td className="py-3 pr-4">
+                        <span className="relative inline-block">
+                          <button
+                            type="button"
+                            onClick={() => setOpenPickerForTxId(t.id)}
+                            className="cursor-pointer rounded-full transition-colors"
                           >
-                            <path
-                              fillRule="evenodd"
-                              d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z"
-                              clipRule="evenodd"
+                            <CategoryBadge name={t.category.name} />
+                          </button>
+                          {openPickerForTxId === t.id && (
+                            <CategoryPicker
+                              currentCategoryId={t.category.id}
+                              categories={categories}
+                              onSelect={(newCategoryId) =>
+                                handleSelect(t.id, newCategoryId)
+                              }
+                              onClose={() => setOpenPickerForTxId(null)}
                             />
-                          </svg>
-                        </button>
-                        <span
-                          style={{
-                            color: isPositive ? '#38a169' : '#1a202c',
-                          }}
-                        >
-                          {formatCLP(t.amount)}
+                          )}
                         </span>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                      </td>
+                      <td className="py-3 pr-4 text-center">
+                        <input
+                          type="checkbox"
+                          checked={t.isShared}
+                          onChange={() => handleSharedToggle(t.id, 'isShared')}
+                          className="h-4 w-4 cursor-pointer accent-indigo-500"
+                        />
+                      </td>
+                      <td className="py-3 pr-4 text-center">
+                        <input
+                          type="checkbox"
+                          checked={t.isReimbursed}
+                          onChange={() =>
+                            handleSharedToggle(t.id, 'isReimbursed')
+                          }
+                          disabled={!t.isShared}
+                          className="h-4 w-4 cursor-pointer accent-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed"
+                        />
+                      </td>
+                      <td className="py-3 text-right text-sm font-semibold tabular-nums">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteRequest(t)}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-red-500 flex-shrink-0"
+                            title="Eliminar transacción"
+                            aria-label="Eliminar transacción"
+                          >
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              viewBox="0 0 20 20"
+                              fill="currentColor"
+                              className="w-4 h-4"
+                            >
+                              <path
+                                fillRule="evenodd"
+                                d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z"
+                                clipRule="evenodd"
+                              />
+                            </svg>
+                          </button>
+                          <span
+                            style={{
+                              color: isPositive ? '#38a169' : '#1a202c',
+                            }}
+                          >
+                            {formatCLP(t.amount)}
+                          </span>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+
+            {/* Desktop pagination */}
+            <Pagination
+              currentPage={currentPage}
+              totalCount={totalCount}
+              pageSize={pageSize}
+            />
+          </>
         )}
       </div>
 
       {/* Transaction cards — mobile only */}
       <div className="md:hidden bg-[#f9f9f9] rounded-[20px] p-4">
-        {filtered.length === 0 ? (
+        {mobileFiltered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-400">
             <span className="text-4xl">🔍</span>
             <p className="text-sm font-medium">
-              No se encontraron transacciones
+              No hay transacciones en este período
             </p>
             {hasActiveFilters && (
               <button
                 onClick={() => {
-                  setSearch('');
-                  setAccountFilter('todas');
-                  setCategoryFilter('todas');
-                  setSharedFilter('todos');
+                  handleSearchChange('');
+                  handleAccountFilterChange('todas');
+                  handleCategoryFilterChange('todas');
+                  handleSharedFilterChange('todos');
                 }}
                 className="text-xs text-indigo-400 hover:text-indigo-600 transition-colors underline underline-offset-2"
               >
@@ -756,7 +888,7 @@ export function TransaccionesClient({
           </div>
         ) : (
           <div>
-            {filtered.map((t) => (
+            {mobileFiltered.map((t) => (
               <TransactionCard
                 key={t.id}
                 transaction={t}
@@ -765,7 +897,7 @@ export function TransaccionesClient({
               />
             ))}
             {/* Category pickers for mobile */}
-            {filtered.map((t) =>
+            {mobileFiltered.map((t) =>
               openPickerForTxId === t.id ? (
                 <div key={`picker-${t.id}`} className="relative">
                   <CategoryPicker
@@ -778,6 +910,18 @@ export function TransaccionesClient({
                   />
                 </div>
               ) : null,
+            )}
+            {/* Infinite scroll sentinel */}
+            <div ref={sentinelRef} className="h-4" />
+            {mobileLoading && (
+              <div className="flex justify-center py-4">
+                <p className="text-sm text-gray-400">Cargando más...</p>
+              </div>
+            )}
+            {!mobileHasMore && mobileFiltered.length > 0 && (
+              <p className="text-xs text-gray-300 text-center py-3">
+                — Fin de la lista —
+              </p>
             )}
           </div>
         )}

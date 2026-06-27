@@ -1,19 +1,52 @@
 import { prisma } from "@/lib/db";
 import { TransaccionesClient } from "./TransaccionesClient";
+import {
+  parseMesParam,
+  getDateFilterForMonth,
+  parsePageParam,
+} from "@/lib/month-utils";
 
 export const dynamic = "force-dynamic";
 
-export default async function TransaccionesPage() {
-  const [transactions, accounts, categories] = await Promise.all([
+const PAGE_SIZE = 50;
+
+export default async function TransaccionesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ mes?: string; pagina?: string }>;
+}) {
+  const params = await searchParams;
+  const mesParam = params.mes;
+  const pagina = parsePageParam(params.pagina);
+
+  const dateInfo = parseMesParam(mesParam);
+  const dateFilter = getDateFilterForMonth(dateInfo);
+
+  // Resolve the effective mes string to pass to client (so MonthPicker
+  // always has a concrete value even when the URL has no mes param).
+  const effectiveMes =
+    dateInfo.type === 'all'
+      ? 'todo'
+      : `${dateInfo.year}-${String(dateInfo.month).padStart(2, '0')}`;
+
+  const whereFilter = {
+    account: { hidden: false },
+    ...(dateFilter ? { date: dateFilter } : {}),
+  };
+
+  const [transactions, totalCount, accounts, categories] = await Promise.all([
     prisma.transaction.findMany({
-      where: {
-        account: { hidden: false },
-      },
+      where: whereFilter,
       include: {
         account: true,
         category: true,
       },
       orderBy: { date: "desc" },
+      skip: (pagina - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
+    }),
+    prisma.transaction.count({
+      where: whereFilter,
     }),
     prisma.account.findMany({ where: { hidden: false }, orderBy: { name: "asc" } }),
     prisma.category.findMany({ orderBy: { name: "asc" } }),
@@ -51,6 +84,10 @@ export default async function TransaccionesPage() {
         transactions={serializedTransactions}
         accounts={serializedAccounts}
         categories={serializedCategories}
+        totalCount={totalCount}
+        currentPage={pagina}
+        pageSize={PAGE_SIZE}
+        mes={effectiveMes}
       />
     </div>
   );
