@@ -2,7 +2,6 @@
 
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
-import type { Familiar } from "@/lib/familiar";
 
 export type UpdateCategoryResult =
   | { ok: true }
@@ -77,17 +76,16 @@ export async function deleteTransaction(
   }
 }
 
-export async function updateFamiliar(
+export async function updateSharedFlags(
   id: number,
-  familiar: Familiar | null,
+  isShared: boolean,
   isReimbursed: boolean,
 ): Promise<void> {
-  // Invariant: a Personal row (familiar === null) can never be reimbursed.
-  const normalizedReimbursed = familiar !== null ? isReimbursed : false;
+  const normalizedReimbursed = isShared ? isReimbursed : false;
 
   await prisma.transaction.update({
     where: { id },
-    data: { familiar, isReimbursed: normalizedReimbursed },
+    data: { isShared, isReimbursed: normalizedReimbursed },
   });
 
   revalidatePath("/transacciones");
@@ -104,7 +102,7 @@ export type CreateTransactionResult =
         amount: number;
         accountId: number;
         categoryId: number;
-        familiar: Familiar | null;
+        isShared: boolean;
         isReimbursed: boolean;
         createdAt: string;
       };
@@ -119,13 +117,11 @@ export async function createTransaction(data: {
   accountId: number;
   categoryId: number;
   note?: string;
-  familiar?: Familiar | null;
+  isShared?: boolean;
   isReimbursed?: boolean;
 }): Promise<CreateTransactionResult> {
   const finalAmount =
     data.type === "expense" ? -Math.abs(data.amount) : Math.abs(data.amount);
-  const familiar = data.familiar ?? null;
-  const isReimbursed = familiar !== null ? data.isReimbursed ?? false : false;
 
   try {
     const transaction = await prisma.transaction.create({
@@ -136,8 +132,8 @@ export async function createTransaction(data: {
         accountId: data.accountId,
         categoryId: data.categoryId,
         note: data.note?.trim() || null,
-        familiar,
-        isReimbursed,
+        isShared: data.isShared ?? false,
+        isReimbursed: data.isReimbursed ?? false,
       },
     });
 
@@ -148,7 +144,6 @@ export async function createTransaction(data: {
       ok: true,
       transaction: {
         ...transaction,
-        familiar: transaction.familiar as Familiar | null,
         date: transaction.date.toISOString(),
         createdAt: transaction.createdAt.toISOString(),
       },

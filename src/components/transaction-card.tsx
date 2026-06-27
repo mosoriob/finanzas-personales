@@ -1,7 +1,6 @@
 "use client";
 
 import { formatCLP } from "@/lib/format";
-import { FAMILIAR_SHORT_LABEL, type Familiar } from "@/lib/familiar";
 
 const MONTH_ES = [
   "ene", "feb", "mar", "abr", "may", "jun",
@@ -28,7 +27,7 @@ type Transaction = {
   description: string;
   note: string | null;
   amount: number;
-  familiar: Familiar | null;
+  isShared: boolean;
   isReimbursed: boolean;
   account: { id: number; name: string };
   category: { id: number; name: string; emoji: string };
@@ -118,9 +117,9 @@ export function TransactionCard({
           >
             {t.category.name}
           </button>
-          {t.familiar !== null && (
+          {t.isShared && (
             <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-orange-50 text-orange-500">
-              {FAMILIAR_SHORT_LABEL[t.familiar]}
+              👥 Familiar
             </span>
           )}
           {t.isReimbursed && (

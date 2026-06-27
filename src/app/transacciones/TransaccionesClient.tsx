@@ -16,18 +16,13 @@ import { MonthPicker } from '@/components/MonthPicker';
 import { Pagination } from '@/components/Pagination';
 import {
   updateTransactionCategory,
-  updateFamiliar,
+  updateSharedFlags,
   updateTransactionNote,
   deleteTransaction,
 } from './actions';
 import { TransactionCard } from '@/components/transaction-card';
 import { CreateTransactionModal } from '@/components/CreateTransactionModal';
 import { DeleteConfirmDialog } from '@/components/DeleteConfirmDialog';
-import {
-  FAMILIAR_LONG_LABEL,
-  PERSONAL_LABEL,
-  type Familiar,
-} from '@/lib/familiar';
 
 type Account = {
   id: number;
@@ -46,7 +41,7 @@ type Transaction = {
   description: string;
   note: string | null;
   amount: number;
-  familiar: Familiar | null;
+  isShared: boolean;
   isReimbursed: boolean;
   account: Account;
   category: Category;
@@ -54,7 +49,7 @@ type Transaction = {
 
 type OptimisticUpdate =
   | { type: 'category'; txId: number; category: Category }
-  | { type: 'shared'; txId: number; familiar: Familiar | null; isReimbursed: boolean }
+  | { type: 'shared'; txId: number; isShared: boolean; isReimbursed: boolean }
   | { type: 'note'; txId: number; note: string | null }
   | { type: 'create'; transaction: Transaction }
   | { type: 'delete'; id: number };
@@ -127,16 +122,6 @@ function PlusIcon() {
 }
 
 type SharedFilter = 'todos' | 'familiares' | 'no-familiares';
-
-type FamiliarDropdownValue = 'PERSONAL' | 'VINA' | 'MELIPILLA';
-
-function familiarToDropdownValue(f: Familiar | null): FamiliarDropdownValue {
-  return f ?? 'PERSONAL';
-}
-
-function dropdownValueToFamiliar(v: FamiliarDropdownValue): Familiar | null {
-  return v === 'PERSONAL' ? null : v;
-}
 
 interface Props {
   transactions: Transaction[];
@@ -219,7 +204,7 @@ export function TransaccionesClient({
         }
         return {
           ...t,
-          familiar: nonDeleteUpdate.familiar,
+          isShared: nonDeleteUpdate.isShared,
           isReimbursed: nonDeleteUpdate.isReimbursed,
         };
       });
@@ -281,48 +266,36 @@ export function TransaccionesClient({
     });
   }
 
-  function handleFamiliarChange(txId: number, newFamiliar: Familiar | null) {
+  function handleSharedToggle(
+    txId: number,
+    field: 'isShared' | 'isReimbursed',
+  ) {
     const current = transactions.find((t) => t.id === txId);
     if (!current) return;
-    if (current.familiar === newFamiliar) return;
 
-    const newIsReimbursed = newFamiliar !== null ? current.isReimbursed : false;
+    let newIsShared = current.isShared;
+    let newIsReimbursed = current.isReimbursed;
 
-    startSharedTransition(async () => {
-      applyOptimistic({
-        type: 'shared',
-        txId,
-        familiar: newFamiliar,
-        isReimbursed: newIsReimbursed,
-      });
-      try {
-        await updateFamiliar(txId, newFamiliar, newIsReimbursed);
-        router.refresh();
-      } catch (err) {
-        console.error('No se pudo actualizar el estado familiar:', err);
-        setToast('No se pudo actualizar');
-      }
-    });
-  }
-
-  function handleReimbursedToggle(txId: number) {
-    const current = transactions.find((t) => t.id === txId);
-    if (!current || current.familiar === null) return;
-
-    const newIsReimbursed = !current.isReimbursed;
+    if (field === 'isShared') {
+      newIsShared = !current.isShared;
+      if (!newIsShared) newIsReimbursed = false;
+    } else {
+      if (!current.isShared) return;
+      newIsReimbursed = !current.isReimbursed;
+    }
 
     startSharedTransition(async () => {
       applyOptimistic({
         type: 'shared',
         txId,
-        familiar: current.familiar,
+        isShared: newIsShared,
         isReimbursed: newIsReimbursed,
       });
       try {
-        await updateFamiliar(txId, current.familiar, newIsReimbursed);
+        await updateSharedFlags(txId, newIsShared, newIsReimbursed);
         router.refresh();
       } catch (err) {
-        console.error('No se pudo actualizar el estado de devolución:', err);
+        console.error('No se pudo actualizar el estado compartido:', err);
         setToast('No se pudo actualizar');
       }
     });
@@ -401,8 +374,8 @@ export function TransaccionesClient({
         return false;
       if (categoryFilter !== 'todas' && t.category.name !== categoryFilter)
         return false;
-      if (sharedFilter === 'familiares' && t.familiar === null) return false;
-      if (sharedFilter === 'no-familiares' && t.familiar !== null) return false;
+      if (sharedFilter === 'familiares' && !t.isShared) return false;
+      if (sharedFilter === 'no-familiares' && t.isShared) return false;
       return true;
     });
   }, [
@@ -422,7 +395,7 @@ export function TransaccionesClient({
     .filter((t) => t.amount > 0)
     .reduce((acc, t) => acc + t.amount, 0);
   const summaryPendingReimbursement = filtered
-    .filter((t) => t.familiar !== null && !t.isReimbursed && t.amount < 0)
+    .filter((t) => t.isShared && !t.isReimbursed && t.amount < 0)
     .reduce((acc, t) => acc + Math.abs(t.amount), 0);
 
   const hasActiveFilters =
@@ -487,8 +460,8 @@ export function TransaccionesClient({
         return false;
       if (categoryFilter !== 'todas' && t.category.name !== categoryFilter)
         return false;
-      if (sharedFilter === 'familiares' && t.familiar === null) return false;
-      if (sharedFilter === 'no-familiares' && t.familiar !== null) return false;
+      if (sharedFilter === 'familiares' && !t.isShared) return false;
+      if (sharedFilter === 'no-familiares' && t.isShared) return false;
       return true;
     });
   }, [mobileItems, search, accountFilter, categoryFilter, sharedFilter]);
@@ -826,31 +799,21 @@ export function TransaccionesClient({
                         </span>
                       </td>
                       <td className="py-3 pr-4 text-center">
-                        <select
-                          value={familiarToDropdownValue(t.familiar)}
-                          onChange={(e) =>
-                            handleFamiliarChange(
-                              t.id,
-                              dropdownValueToFamiliar(
-                                e.target.value as FamiliarDropdownValue,
-                              ),
-                            )
-                          }
-                          className="text-xs border border-indigo-100 rounded-full px-2 py-1 outline-none cursor-pointer bg-white hover:border-indigo-200 focus:border-violet-400 transition-colors"
-                        >
-                          <option value="PERSONAL">{PERSONAL_LABEL}</option>
-                          <option value="VINA">{FAMILIAR_LONG_LABEL.VINA}</option>
-                          <option value="MELIPILLA">
-                            {FAMILIAR_LONG_LABEL.MELIPILLA}
-                          </option>
-                        </select>
+                        <input
+                          type="checkbox"
+                          checked={t.isShared}
+                          onChange={() => handleSharedToggle(t.id, 'isShared')}
+                          className="h-4 w-4 cursor-pointer accent-indigo-500"
+                        />
                       </td>
                       <td className="py-3 pr-4 text-center">
                         <input
                           type="checkbox"
                           checked={t.isReimbursed}
-                          onChange={() => handleReimbursedToggle(t.id)}
-                          disabled={t.familiar === null}
+                          onChange={() =>
+                            handleSharedToggle(t.id, 'isReimbursed')
+                          }
+                          disabled={!t.isShared}
                           className="h-4 w-4 cursor-pointer accent-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed"
                         />
                       </td>

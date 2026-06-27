@@ -2,11 +2,6 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { createTransaction, CreateTransactionResult } from '@/app/transacciones/actions';
-import {
-  FAMILIAR_LONG_LABEL,
-  PERSONAL_LABEL,
-  type Familiar,
-} from '@/lib/familiar';
 
 type Account = {
   id: number;
@@ -27,17 +22,11 @@ type TransactionRow = {
   amount: number;
   accountId: number;
   categoryId: number;
-  familiar: Familiar | null;
+  isShared: boolean;
   isReimbursed: boolean;
   account: Account;
   category: Category;
 };
-
-type FamiliarDropdownValue = 'PERSONAL' | 'VINA' | 'MELIPILLA';
-
-function dropdownValueToFamiliar(v: FamiliarDropdownValue): Familiar | null {
-  return v === 'PERSONAL' ? null : v;
-}
 
 interface Props {
   accounts: Account[];
@@ -81,10 +70,8 @@ export function CreateTransactionModal({
     categories.length > 0 ? String(categories[0].id) : '',
   );
   const [note, setNote] = useState('');
-  const [familiarValue, setFamiliarValue] = useState<FamiliarDropdownValue>('PERSONAL');
+  const [isShared, setIsShared] = useState(false);
   const [isReimbursed, setIsReimbursed] = useState(false);
-  const familiar = dropdownValueToFamiliar(familiarValue);
-  const isShared = familiar !== null;
   const [errors, setErrors] = useState<FormErrors>({});
   const [submitting, setSubmitting] = useState(false);
 
@@ -166,7 +153,7 @@ export function CreateTransactionModal({
       accountId: parseInt(accountId, 10),
       categoryId: parseInt(categoryId, 10),
       note: note || undefined,
-      familiar,
+      isShared,
       isReimbursed: isShared ? isReimbursed : false,
     });
 
@@ -385,28 +372,20 @@ export function CreateTransactionModal({
                 />
               </div>
 
-              {/* Familiar (household) */}
-              <div>
-                <label className="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-1.5">
-                  Familiar
-                </label>
-                <select
-                  value={familiarValue}
-                  onChange={(e) => {
-                    const next = e.target.value as FamiliarDropdownValue;
-                    setFamiliarValue(next);
-                    if (next === 'PERSONAL') setIsReimbursed(false);
-                  }}
-                  className="w-full border border-indigo-100 rounded-xl px-3 py-2.5 text-sm text-gray-700 outline-none focus:border-violet-400 transition-colors bg-white cursor-pointer"
-                >
-                  <option value="PERSONAL">{PERSONAL_LABEL}</option>
-                  <option value="VINA">{FAMILIAR_LONG_LABEL.VINA}</option>
-                  <option value="MELIPILLA">{FAMILIAR_LONG_LABEL.MELIPILLA}</option>
-                </select>
-              </div>
-
-              {/* Devuelto */}
+              {/* Checkboxes */}
               <div className="flex flex-col gap-2.5">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isShared}
+                    onChange={(e) => {
+                      setIsShared(e.target.checked);
+                      if (!e.target.checked) setIsReimbursed(false);
+                    }}
+                    className="h-4 w-4 cursor-pointer accent-indigo-500"
+                  />
+                  <span className="text-sm text-gray-700">Familiar</span>
+                </label>
                 <label
                   className={`flex items-center gap-3 ${isShared ? 'cursor-pointer' : 'cursor-not-allowed opacity-40'}`}
                 >
