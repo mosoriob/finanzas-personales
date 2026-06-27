@@ -216,12 +216,14 @@ export type ApplyRulesResult =
   | { ok: true; updated: number }
   | { ok: false; error: string };
 
+type Reassignment = { id: number; categoryId: number };
+
 // Computes which transactions currently in "Otro" would move to a different
 // category if the current rule set were applied. Only "Otro" transactions are
 // considered (manual categorizations are never overwritten), and a transaction
 // is included only when a rule matches AND points at a different category.
 async function computeRuleReassignments(): Promise<
-  | { ok: true; otroId: number; reassignments: { id: number; categoryId: number }[] }
+  | { ok: true; reassignments: Reassignment[] }
   | { ok: false; error: string }
 > {
   const otro = await prisma.category.findFirst({ where: { name: "Otro" } });
@@ -237,7 +239,7 @@ async function computeRuleReassignments(): Promise<
     }),
   ]);
 
-  const reassignments: { id: number; categoryId: number }[] = [];
+  const reassignments: Reassignment[] = [];
   for (const t of transactions) {
     const matched = matchCategory(t.description, rules);
     if (matched !== null && matched !== otro.id) {
@@ -245,7 +247,7 @@ async function computeRuleReassignments(): Promise<
     }
   }
 
-  return { ok: true, otroId: otro.id, reassignments };
+  return { ok: true, reassignments };
 }
 
 // Step 1 of "apply to existing": how many "Otro" transactions would change.
