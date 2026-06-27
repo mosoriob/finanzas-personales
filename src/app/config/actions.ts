@@ -231,20 +231,27 @@ export async function exportRules(): Promise<string> {
 
 // ─── Import rules ───
 
-// Report returned to the Reglas panel after an import: which match texts were
-// created and which were skipped because they already exist locally.
-export type ImportRulesResult = {
-  ok: true;
-  created: string[];
-  skippedExisting: string[];
-};
+// Reason-coded report returned to the Reglas panel after an import, or a
+// structural error that rejected the whole file (nothing written).
+export type ImportRulesResult =
+  | {
+      ok: true;
+      created: string[];
+      createdCategories: string[];
+      skippedExisting: string[];
+      skippedInvalid: string[];
+      skippedDuplicate: string[];
+    }
+  | { ok: false; error: string };
 
 // Loads the existing rules + categories, delegates every decision to the pure
-// `planImport` seam, then executes the planned inserts inside a single
-// `prisma.$transaction` so the import is atomic. The operation is
-// non-destructive (existing matches are skipped, never overwritten), so the
-// client runs it immediately on file selection with no confirm step. An
-// empty/whitespace file plans nothing and is a harmless no-op.
+// `planImport` seam, then — when the plan is accepted — executes every rule
+// insert (each carrying a `connectOrCreate` for its category) inside one
+// `prisma.$transaction`, so the auto-created categories and the rule inserts are
+// atomic. A structural problem rejects the whole file: nothing is written. The
+// operation is otherwise non-destructive (existing matches are skipped, never
+// overwritten), so the client runs it immediately on file selection with no
+// confirm step. An empty/whitespace file plans nothing and is a harmless no-op.
 export async function importRules(
   fileContents: string
 ): Promise<ImportRulesResult> {
@@ -254,11 +261,22 @@ export async function importRules(
   ]);
 
   const plan = planImport(fileContents, { rules, categories });
+  if (!plan.ok) return { ok: false, error: plan.error };
 
   if (plan.toCreate.length > 0) {
     await prisma.$transaction(
       plan.toCreate.map((r) =>
-        prisma.rule.create({ data: { match: r.match, categoryId: r.categoryId } })
+        prisma.rule.create({
+          data: {
+            match: r.match,
+            category: {
+              connectOrCreate: {
+                where: { name: r.category.name },
+                create: { name: r.category.name, emoji: r.category.emoji },
+              },
+            },
+          },
+        })
       )
     );
     revalidatePath("/config");

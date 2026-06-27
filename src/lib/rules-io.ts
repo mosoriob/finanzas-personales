@@ -11,17 +11,20 @@
  * numeric id, so a file exported from one database imports faithfully into
  * another where the category ids differ.
  *
- * Import side: `planImport` is the pure decision seam. It parses a valid export
- * file and computes the executable plan (rule inserts) plus a report (what was
- * created vs skipped). The thin `importRules` server action loads the existing
- * rules + categories, calls this, and runs the inserts in one transaction. This
- * slice covers the happy path — referenced categories are assumed to exist
- * locally; structural rejection, per-rule validation, within-file dedup, and
- * auto-creating missing categories belong to the robustness slice.
+ * Import side: `planImport` is the pure decision seam. It parses an export file,
+ * hardens it (structural rejection + per-rule validation + within-file dedup),
+ * and computes the executable plan (categories to auto-create + rule inserts)
+ * plus a reason-coded report. The thin `importRules` server action loads the
+ * existing rules + categories, calls this, and — when the plan is accepted —
+ * runs every rule insert (each with a `connectOrCreate` for its category) inside
+ * one `prisma.$transaction`, so category-creates and rule-inserts are atomic.
  */
 
 /** Current export format version. Only this version is recognized today. */
 export const RULES_FILE_VERSION = 1;
+
+/** Emoji a category falls back to when a file entry has no usable emoji. */
+export const DEFAULT_CATEGORY_EMOJI = "📌";
 
 /** A rule as loaded from the database (the input to `serializeRules`). */
 export type SerializableRule = {
@@ -87,7 +90,7 @@ export function serializeRules(
 /** A rule already present locally — only its `match` matters for skip checks. */
 export type ImportableRule = { match: string };
 
-/** A category already present locally, resolved by `name` during import. */
+/** A category already present locally, reused by `name` during import. */
 export type ImportableCategory = { id: number; name: string };
 
 /** Snapshot of the local DB that `planImport` decides against. */
@@ -96,33 +99,58 @@ export type ImportExistingState = {
   categories: ImportableCategory[];
 };
 
-/** One rule insert in the executable plan: trimmed match + resolved category id. */
-export type PlannedRule = { match: string; categoryId: number };
+/**
+ * One rule insert in the executable plan: trimmed match plus its category by
+ * name + emoji. The category is referenced by name (not id) because it may not
+ * exist locally yet; the action resolves/creates it via `connectOrCreate`. The
+ * emoji is only used when the category has to be created.
+ */
+export type PlannedRule = {
+  match: string;
+  category: { name: string; emoji: string };
+};
 
-/** What `planImport` produces: the executable plan plus the Spanish-UI report. */
-export type ImportPlan = {
-  /** Rules to insert (the only writes this slice performs). */
-  toCreate: PlannedRule[];
-  report: {
-    /** Match texts that will be created. */
-    created: string[];
-    /** Match texts skipped because they already exist locally. */
-    skippedExisting: string[];
-  };
+/** Reason-coded report distinguishing why each file rule was created or skipped. */
+export type ImportReport = {
+  /** Match texts that will be created. */
+  created: string[];
+  /** Category names that will be auto-created (didn't exist locally). */
+  createdCategories: string[];
+  /** Match texts skipped because they already exist locally. */
+  skippedExisting: string[];
+  /** Match texts skipped because the entry was invalid (empty match / no category). */
+  skippedInvalid: string[];
+  /** Match texts skipped because an earlier file entry already used that match. */
+  skippedDuplicate: string[];
 };
 
 /**
+ * What `planImport` produces. Hybrid validation: a structural problem (bad JSON,
+ * unknown version, wrong shape) rejects the whole import (`ok: false`), while a
+ * per-rule problem only skips that rule (reported under `ok: true`).
+ */
+export type ImportPlan =
+  | { ok: false; error: string }
+  | { ok: true; toCreate: PlannedRule[]; report: ImportReport };
+
+/**
  * Pure function (no DB / no network): given the contents of an export file and a
- * snapshot of the local rules + categories, compute the import plan and report.
+ * snapshot of the local rules + categories, validate and compute the import plan
+ * plus a reason-coded report.
  *
- * Happy-path slice:
- * - Each file rule's `match` is trimmed (held to the same normalization as a
- *   manually-created rule).
+ * Structural rejection (reject-all): invalid JSON, an unknown `version`, or a
+ * wrong top-level shape rejects the entire import — nothing is planned.
+ *
+ * Per-rule handling (skip, valid siblings still import):
+ * - `match` is trimmed (same normalization as a manually-created rule). An empty
+ *   match or a missing/blank category name → `skippedInvalid`.
  * - A match that already exists locally — compared case-insensitively after
  *   trimming on both sides — is skipped, never overwritten (`skippedExisting`).
- * - Otherwise the rule's category is resolved by **existing name** and the rule
- *   is planned for creation. (Categories are assumed to exist locally; an
- *   unresolved category is skipped defensively — auto-create is a later slice.)
+ * - A match a previous file entry already used (case-insensitive, after trim) is
+ *   skipped as `skippedDuplicate` (first kept, rest dropped).
+ * - Otherwise the rule is planned. Its category is reused by name if it exists
+ *   locally (emoji left untouched); otherwise it is queued for auto-create with
+ *   the file's emoji, falling back to the default when missing/blank.
  *
  * An empty/whitespace file, or a valid file with no rules, is a harmless no-op.
  */
@@ -130,38 +158,84 @@ export function planImport(
   fileContents: string,
   existing: ImportExistingState
 ): ImportPlan {
-  const empty: ImportPlan = {
-    toCreate: [],
-    report: { created: [], skippedExisting: [] },
+  const report: ImportReport = {
+    created: [],
+    createdCategories: [],
+    skippedExisting: [],
+    skippedInvalid: [],
+    skippedDuplicate: [],
   };
 
   const trimmed = fileContents.trim();
-  if (trimmed.length === 0) return empty;
+  if (trimmed.length === 0) return { ok: true, toCreate: [], report };
 
-  const parsed = JSON.parse(trimmed) as RulesExportFile;
-  const fileRules = parsed.rules ?? [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return { ok: false, error: "El archivo no es un JSON válido." };
+  }
 
-  const categoryIdByName = new Map(
-    existing.categories.map((c) => [c.name, c.id])
-  );
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return { ok: false, error: "El archivo no tiene el formato esperado." };
+  }
+  const doc = parsed as { version?: unknown; rules?: unknown };
+  if (doc.version !== RULES_FILE_VERSION) {
+    return {
+      ok: false,
+      error: `Versión de archivo no compatible (se esperaba ${RULES_FILE_VERSION}).`,
+    };
+  }
+  if (!Array.isArray(doc.rules)) {
+    return { ok: false, error: "El archivo no tiene el formato esperado." };
+  }
+
+  const existingCategoryNames = new Set(existing.categories.map((c) => c.name));
   const existingMatches = new Set(
     existing.rules.map((r) => r.match.trim().toLowerCase())
   );
+  const seenInFile = new Set<string>();
+  const plannedCategories = new Set<string>();
 
   const toCreate: PlannedRule[] = [];
-  const skippedExisting: string[] = [];
 
-  for (const entry of fileRules) {
-    const match = entry.match.trim();
-    if (existingMatches.has(match.toLowerCase())) {
-      skippedExisting.push(match);
+  for (const raw of doc.rules) {
+    const entry = (raw ?? {}) as { match?: unknown; category?: unknown };
+    const match = typeof entry.match === "string" ? entry.match.trim() : "";
+    const category = (entry.category ?? {}) as { name?: unknown; emoji?: unknown };
+    const categoryName =
+      typeof category.name === "string" ? category.name.trim() : "";
+
+    if (match.length === 0 || categoryName.length === 0) {
+      report.skippedInvalid.push(match);
       continue;
     }
-    const categoryId = categoryIdByName.get(entry.category.name);
-    if (categoryId === undefined) continue; // category auto-create: later slice
-    toCreate.push({ match, categoryId });
+
+    const key = match.toLowerCase();
+    if (existingMatches.has(key)) {
+      report.skippedExisting.push(match);
+      continue;
+    }
+    if (seenInFile.has(key)) {
+      report.skippedDuplicate.push(match);
+      continue;
+    }
+    seenInFile.add(key);
+
+    const emoji =
+      (typeof category.emoji === "string" ? category.emoji.trim() : "") ||
+      DEFAULT_CATEGORY_EMOJI;
+    toCreate.push({ match, category: { name: categoryName, emoji } });
+    report.created.push(match);
+
+    if (
+      !existingCategoryNames.has(categoryName) &&
+      !plannedCategories.has(categoryName)
+    ) {
+      plannedCategories.add(categoryName);
+      report.createdCategories.push(categoryName);
+    }
   }
 
-  const created = toCreate.map((r) => r.match);
-  return { toCreate, report: { created, skippedExisting } };
+  return { ok: true, toCreate, report };
 }

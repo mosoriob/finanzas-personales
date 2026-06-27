@@ -1090,19 +1090,54 @@ function ReglasPanel({ rules, categories }: ReglasPanelProps) {
           <h3 className="text-sm font-semibold text-gray-700 mb-2">
             Resultado de la importación
           </h3>
-          <p className="text-sm text-gray-500">
-            {importReport.created.length === 0
-              ? "No se creó ninguna regla nueva."
-              : `${importReport.created.length} ${importReport.created.length === 1 ? "regla creada" : "reglas creadas"}: ${importReport.created.join(", ")}.`}
-          </p>
-          {importReport.skippedExisting.length > 0 && (
-            <p className="text-sm text-gray-400 mt-1">
-              {importReport.skippedExisting.length}{" "}
-              {importReport.skippedExisting.length === 1
-                ? "regla omitida porque ya existía"
-                : "reglas omitidas porque ya existían"}
-              : {importReport.skippedExisting.join(", ")}.
+          {!importReport.ok ? (
+            <p className="text-sm text-red-600">
+              No se importó nada: {importReport.error}
             </p>
+          ) : (
+            <>
+              <p className="text-sm text-gray-500">
+                {importReport.created.length === 0
+                  ? "No se creó ninguna regla nueva."
+                  : `${importReport.created.length} ${importReport.created.length === 1 ? "regla creada" : "reglas creadas"}: ${importReport.created.join(", ")}.`}
+              </p>
+              {importReport.createdCategories.length > 0 && (
+                <p className="text-sm text-gray-500 mt-1">
+                  {importReport.createdCategories.length}{" "}
+                  {importReport.createdCategories.length === 1
+                    ? "categoría creada automáticamente"
+                    : "categorías creadas automáticamente"}
+                  : {importReport.createdCategories.join(", ")}.
+                </p>
+              )}
+              {importReport.skippedExisting.length > 0 && (
+                <p className="text-sm text-gray-400 mt-1">
+                  {importReport.skippedExisting.length}{" "}
+                  {importReport.skippedExisting.length === 1
+                    ? "regla omitida porque ya existía"
+                    : "reglas omitidas porque ya existían"}
+                  : {importReport.skippedExisting.join(", ")}.
+                </p>
+              )}
+              {importReport.skippedDuplicate.length > 0 && (
+                <p className="text-sm text-gray-400 mt-1">
+                  {importReport.skippedDuplicate.length}{" "}
+                  {importReport.skippedDuplicate.length === 1
+                    ? "regla omitida por estar duplicada en el archivo"
+                    : "reglas omitidas por estar duplicadas en el archivo"}
+                  : {importReport.skippedDuplicate.join(", ")}.
+                </p>
+              )}
+              {importReport.skippedInvalid.length > 0 && (
+                <p className="text-sm text-gray-400 mt-1">
+                  {importReport.skippedInvalid.length}{" "}
+                  {importReport.skippedInvalid.length === 1
+                    ? "regla omitida por ser inválida"
+                    : "reglas omitidas por ser inválidas"}
+                  .
+                </p>
+              )}
+            </>
           )}
         </div>
       )}
