@@ -17,11 +17,23 @@ vi.mock("@/lib/db", () => ({
     transaction: {
       updateMany: vi.fn(),
     },
+    rule: {
+      findMany: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+    },
     $transaction: vi.fn(),
   },
 }));
 
-import { updateCategory, deleteCategory } from "../actions";
+import {
+  updateCategory,
+  deleteCategory,
+  createRule,
+  updateRule,
+  deleteRule,
+} from "../actions";
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 
@@ -34,6 +46,12 @@ const mockPrisma = prisma as unknown as {
   };
   transaction: {
     updateMany: ReturnType<typeof vi.fn>;
+  };
+  rule: {
+    findMany: ReturnType<typeof vi.fn>;
+    create: ReturnType<typeof vi.fn>;
+    update: ReturnType<typeof vi.fn>;
+    delete: ReturnType<typeof vi.fn>;
   };
   $transaction: ReturnType<typeof vi.fn>;
 };
@@ -146,5 +164,95 @@ describe("deleteCategory", () => {
     expect(revalidatePath).toHaveBeenCalledWith("/config");
     expect(revalidatePath).toHaveBeenCalledWith("/transacciones");
     expect(revalidatePath).toHaveBeenCalledWith("/");
+  });
+});
+
+// ─── createRule ───
+
+describe("createRule", () => {
+  it("rejects empty / whitespace-only match text", async () => {
+    const result = await createRule({ match: "   ", categoryId: 1 });
+    expect(result).toEqual({
+      ok: false,
+      error: "El texto a buscar no puede estar vacío",
+    });
+    expect(mockPrisma.rule.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects when the category does not exist", async () => {
+    mockPrisma.category.findUnique.mockResolvedValue(null);
+    const result = await createRule({ match: "Jumbo", categoryId: 99 });
+    expect(result).toEqual({ ok: false, error: "Categoría no encontrada" });
+    expect(mockPrisma.rule.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a case-insensitive duplicate match", async () => {
+    mockPrisma.category.findUnique.mockResolvedValue({ id: 1, name: "Supermercado" });
+    mockPrisma.rule.findMany.mockResolvedValue([{ id: 5, match: "JUMBO", categoryId: 1 }]);
+    const result = await createRule({ match: "jumbo", categoryId: 1 });
+    expect(result).toEqual({ ok: false, error: "Ya existe una regla con ese texto" });
+    expect(mockPrisma.rule.create).not.toHaveBeenCalled();
+  });
+
+  it("creates a rule with trimmed match text", async () => {
+    mockPrisma.category.findUnique.mockResolvedValue({ id: 1, name: "Supermercado" });
+    mockPrisma.rule.findMany.mockResolvedValue([]);
+    mockPrisma.rule.create.mockResolvedValue({ id: 1, match: "Jumbo", categoryId: 1 });
+
+    const result = await createRule({ match: "  Jumbo  ", categoryId: 1 });
+    expect(result).toEqual({ ok: true });
+    expect(mockPrisma.rule.create).toHaveBeenCalledWith({
+      data: { match: "Jumbo", categoryId: 1 },
+    });
+    expect(revalidatePath).toHaveBeenCalledWith("/config");
+  });
+});
+
+// ─── updateRule ───
+
+describe("updateRule", () => {
+  it("rejects empty / whitespace-only match text", async () => {
+    const result = await updateRule(1, { match: "  ", categoryId: 1 });
+    expect(result).toEqual({
+      ok: false,
+      error: "El texto a buscar no puede estar vacío",
+    });
+    expect(mockPrisma.rule.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects a case-insensitive duplicate from a different rule", async () => {
+    mockPrisma.category.findUnique.mockResolvedValue({ id: 1, name: "Supermercado" });
+    mockPrisma.rule.findMany.mockResolvedValue([
+      { id: 1, match: "Lider", categoryId: 1 },
+      { id: 2, match: "JUMBO", categoryId: 1 },
+    ]);
+    const result = await updateRule(1, { match: "jumbo", categoryId: 1 });
+    expect(result).toEqual({ ok: false, error: "Ya existe una regla con ese texto" });
+    expect(mockPrisma.rule.update).not.toHaveBeenCalled();
+  });
+
+  it("allows keeping its own match text (uniqueness excludes self)", async () => {
+    mockPrisma.category.findUnique.mockResolvedValue({ id: 1, name: "Supermercado" });
+    mockPrisma.rule.findMany.mockResolvedValue([{ id: 1, match: "Jumbo", categoryId: 1 }]);
+    mockPrisma.rule.update.mockResolvedValue({ id: 1, match: "Jumbo", categoryId: 2 });
+
+    const result = await updateRule(1, { match: "Jumbo", categoryId: 2 });
+    expect(result).toEqual({ ok: true });
+    expect(mockPrisma.rule.update).toHaveBeenCalledWith({
+      where: { id: 1 },
+      data: { match: "Jumbo", categoryId: 2 },
+    });
+    expect(revalidatePath).toHaveBeenCalledWith("/config");
+  });
+});
+
+// ─── deleteRule ───
+
+describe("deleteRule", () => {
+  it("deletes the rule and revalidates", async () => {
+    mockPrisma.rule.delete.mockResolvedValue({ id: 1 });
+    await deleteRule(1);
+    expect(mockPrisma.rule.delete).toHaveBeenCalledWith({ where: { id: 1 } });
+    expect(revalidatePath).toHaveBeenCalledWith("/config");
   });
 });
