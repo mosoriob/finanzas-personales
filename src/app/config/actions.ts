@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/db";
 import { matchCategory } from "@/lib/rules";
-import { serializeRules } from "@/lib/rules-io";
+import { serializeRules, planImport } from "@/lib/rules-io";
 import { revalidatePath } from "next/cache";
 
 export async function createAccount(formData: FormData) {
@@ -222,6 +222,44 @@ export async function exportRules(): Promise<string> {
 
   const file = serializeRules(rules, categories, new Date());
   return JSON.stringify(file, null, 2);
+}
+
+// ─── Import rules ───
+
+// Report returned to the Reglas panel after an import: which match texts were
+// created and which were skipped because they already exist locally.
+export type ImportRulesResult = {
+  ok: true;
+  created: string[];
+  skippedExisting: string[];
+};
+
+// Loads the existing rules + categories, delegates every decision to the pure
+// `planImport` seam, then executes the planned inserts inside a single
+// `prisma.$transaction` so the import is atomic. The operation is
+// non-destructive (existing matches are skipped, never overwritten), so the
+// client runs it immediately on file selection with no confirm step. An
+// empty/whitespace file plans nothing and is a harmless no-op.
+export async function importRules(
+  fileContents: string
+): Promise<ImportRulesResult> {
+  const [rules, categories] = await Promise.all([
+    prisma.rule.findMany(),
+    prisma.category.findMany(),
+  ]);
+
+  const plan = planImport(fileContents, { rules, categories });
+
+  if (plan.toCreate.length > 0) {
+    await prisma.$transaction(
+      plan.toCreate.map((r) =>
+        prisma.rule.create({ data: { match: r.match, categoryId: r.categoryId } })
+      )
+    );
+    revalidatePath("/config");
+  }
+
+  return { ok: true, ...plan.report };
 }
 
 // ─── Apply rules to existing transactions ───

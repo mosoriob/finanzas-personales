@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { createAccount, deleteAccount, createCategory, toggleAccountVisibility, updateCategory, createRule, updateRule, deleteRule, previewApplyRules, applyRulesToExisting, exportRules } from "./actions";
+import { createAccount, deleteAccount, createCategory, toggleAccountVisibility, updateCategory, createRule, updateRule, deleteRule, previewApplyRules, applyRulesToExisting, exportRules, importRules } from "./actions";
+import type { ImportRulesResult } from "./actions";
 import { DeleteCategoryDialog } from "@/components/DeleteCategoryDialog";
 import { EmojiPicker } from "@/components/EmojiPicker";
 import { AUTO_CATEGORIZATION_NAMES } from "@/lib/constants";
@@ -783,6 +784,30 @@ function ReglasPanel({ rules, categories }: ReglasPanelProps) {
     }
   }
 
+  // Import rules from a portable JSON file. Non-destructive, so it runs
+  // immediately on file selection (no preview/confirm step) and then renders an
+  // inline report of what was created vs skipped.
+  const importInputRef = useRef<HTMLInputElement>(null);
+  const [importPending, setImportPending] = useState(false);
+  const [importReport, setImportReport] = useState<ImportRulesResult | null>(null);
+
+  async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    // Reset the input so re-picking the same file fires onChange again.
+    e.target.value = "";
+    if (!file) return;
+
+    setImportPending(true);
+    setImportReport(null);
+    try {
+      const contents = await file.text();
+      const result = await importRules(contents);
+      setImportReport(result);
+    } finally {
+      setImportPending(false);
+    }
+  }
+
   // "Apply rules to existing" two-step flow: preview a count, confirm, apply.
   const [applyPending, setApplyPending] = useState(false);
   const [applyPreview, setApplyPreview] = useState<number | null>(null);
@@ -908,15 +933,55 @@ function ReglasPanel({ rules, categories }: ReglasPanelProps) {
             Los cambios se aplican en la próxima sincronización.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={handleExport}
-          disabled={exportPending}
-          className="border border-indigo-200 text-indigo-600 rounded-xl px-5 py-2.5 text-sm font-semibold hover:bg-indigo-50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
-        >
-          {exportPending ? "Exportando…" : "Exportar reglas"}
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={exportPending}
+            className="border border-indigo-200 text-indigo-600 rounded-xl px-5 py-2.5 text-sm font-semibold hover:bg-indigo-50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
+          >
+            {exportPending ? "Exportando…" : "Exportar reglas"}
+          </button>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept="application/json,.json"
+            onChange={handleImportFile}
+            className="hidden"
+          />
+          <button
+            type="button"
+            onClick={() => importInputRef.current?.click()}
+            disabled={importPending}
+            className="border border-indigo-200 text-indigo-600 rounded-xl px-5 py-2.5 text-sm font-semibold hover:bg-indigo-50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
+          >
+            {importPending ? "Importando…" : "Importar reglas"}
+          </button>
+        </div>
       </div>
+
+      {/* Inline import report (Spanish), shown after an import completes. */}
+      {importReport && (
+        <div className="bg-white rounded-2xl border border-gray-100 p-5">
+          <h3 className="text-sm font-semibold text-gray-700 mb-2">
+            Resultado de la importación
+          </h3>
+          <p className="text-sm text-gray-500">
+            {importReport.created.length === 0
+              ? "No se creó ninguna regla nueva."
+              : `${importReport.created.length} ${importReport.created.length === 1 ? "regla creada" : "reglas creadas"}: ${importReport.created.join(", ")}.`}
+          </p>
+          {importReport.skippedExisting.length > 0 && (
+            <p className="text-sm text-gray-400 mt-1">
+              {importReport.skippedExisting.length}{" "}
+              {importReport.skippedExisting.length === 1
+                ? "regla omitida porque ya existía"
+                : "reglas omitidas porque ya existían"}
+              : {importReport.skippedExisting.join(", ")}.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Create rule form */}
       <div className="bg-white rounded-2xl border border-gray-100 p-5">

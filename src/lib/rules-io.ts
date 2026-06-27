@@ -10,6 +10,14 @@
  * Categories are referenced by **name** (and carry their emoji) rather than by
  * numeric id, so a file exported from one database imports faithfully into
  * another where the category ids differ.
+ *
+ * Import side: `planImport` is the pure decision seam. It parses a valid export
+ * file and computes the executable plan (rule inserts) plus a report (what was
+ * created vs skipped). The thin `importRules` server action loads the existing
+ * rules + categories, calls this, and runs the inserts in one transaction. This
+ * slice covers the happy path — referenced categories are assumed to exist
+ * locally; structural rejection, per-rule validation, within-file dedup, and
+ * auto-creating missing categories belong to the robustness slice.
  */
 
 /** Current export format version. Only this version is recognized today. */
@@ -72,4 +80,89 @@ export function serializeRules(
     exportedAt: exportedAt.toISOString(),
     rules: exported,
   };
+}
+
+// ─── Import ───
+
+/** A rule already present locally — only its `match` matters for skip checks. */
+export type ImportableRule = { match: string };
+
+/** A category already present locally, resolved by `name` during import. */
+export type ImportableCategory = { id: number; name: string };
+
+/** Snapshot of the local DB that `planImport` decides against. */
+export type ImportExistingState = {
+  rules: ImportableRule[];
+  categories: ImportableCategory[];
+};
+
+/** One rule insert in the executable plan: trimmed match + resolved category id. */
+export type PlannedRule = { match: string; categoryId: number };
+
+/** What `planImport` produces: the executable plan plus the Spanish-UI report. */
+export type ImportPlan = {
+  /** Rules to insert (the only writes this slice performs). */
+  toCreate: PlannedRule[];
+  report: {
+    /** Match texts that will be created. */
+    created: string[];
+    /** Match texts skipped because they already exist locally. */
+    skippedExisting: string[];
+  };
+};
+
+/**
+ * Pure function (no DB / no network): given the contents of an export file and a
+ * snapshot of the local rules + categories, compute the import plan and report.
+ *
+ * Happy-path slice:
+ * - Each file rule's `match` is trimmed (held to the same normalization as a
+ *   manually-created rule).
+ * - A match that already exists locally — compared case-insensitively after
+ *   trimming on both sides — is skipped, never overwritten (`skippedExisting`).
+ * - Otherwise the rule's category is resolved by **existing name** and the rule
+ *   is planned for creation. (Categories are assumed to exist locally; an
+ *   unresolved category is skipped defensively — auto-create is a later slice.)
+ *
+ * An empty/whitespace file, or a valid file with no rules, is a harmless no-op.
+ */
+export function planImport(
+  fileContents: string,
+  existing: ImportExistingState
+): ImportPlan {
+  const empty: ImportPlan = {
+    toCreate: [],
+    report: { created: [], skippedExisting: [] },
+  };
+
+  const trimmed = fileContents.trim();
+  if (trimmed.length === 0) return empty;
+
+  const parsed = JSON.parse(trimmed) as RulesExportFile;
+  const fileRules = parsed.rules ?? [];
+
+  const categoryIdByName = new Map(
+    existing.categories.map((c) => [c.name, c.id])
+  );
+  const existingMatches = new Set(
+    existing.rules.map((r) => r.match.trim().toLowerCase())
+  );
+
+  const toCreate: PlannedRule[] = [];
+  const created: string[] = [];
+  const skippedExisting: string[] = [];
+
+  for (const entry of fileRules) {
+    const match = entry.match.trim();
+    if (existingMatches.has(match.toLowerCase())) {
+      skippedExisting.push(match);
+      continue;
+    }
+    const categoryId = categoryIdByName.get(entry.category.name);
+    if (categoryId === undefined) continue; // category auto-create: later slice
+    toCreate.push({ match, categoryId });
+    created.push(match);
+  }
+
+  return { toCreate, report: { created, skippedExisting } };
 }

@@ -39,6 +39,7 @@ import {
   previewApplyRules,
   applyRulesToExisting,
   exportRules,
+  importRules,
 } from "../actions";
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
@@ -320,6 +321,81 @@ describe("exportRules", () => {
 
     expect(parsed.version).toBe(1);
     expect(parsed.rules).toEqual([]);
+  });
+});
+
+// ─── importRules ───
+
+const importFile = (rules: unknown[]) =>
+  JSON.stringify({ version: 1, exportedAt: "2026-06-27T12:00:00.000Z", rules });
+
+describe("importRules", () => {
+  it("inserts the planned rules in a single $transaction and returns the report", async () => {
+    mockPrisma.rule.findMany.mockResolvedValue([]); // no existing rules
+    mockPrisma.category.findMany.mockResolvedValue([
+      { id: 10, name: "Supermercado", emoji: "🛒" },
+      { id: 20, name: "Transporte", emoji: "🚌" },
+    ]);
+    mockPrisma.rule.create.mockImplementation((args: unknown) => args);
+    mockPrisma.$transaction.mockResolvedValue([]);
+
+    const result = await importRules(
+      importFile([
+        { match: "Jumbo", category: { name: "Supermercado", emoji: "🛒" } },
+        { match: "Uber", category: { name: "Transporte", emoji: "🚌" } },
+      ])
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      created: ["Jumbo", "Uber"],
+      skippedExisting: [],
+    });
+    expect(mockPrisma.rule.create).toHaveBeenCalledWith({
+      data: { match: "Jumbo", categoryId: 10 },
+    });
+    expect(mockPrisma.rule.create).toHaveBeenCalledWith({
+      data: { match: "Uber", categoryId: 20 },
+    });
+    expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+    const batch = mockPrisma.$transaction.mock.calls[0][0];
+    expect(batch).toHaveLength(2);
+    expect(revalidatePath).toHaveBeenCalledWith("/config");
+  });
+
+  it("skips a match that already exists locally and reports it without writing it", async () => {
+    mockPrisma.rule.findMany.mockResolvedValue([{ id: 1, match: "JUMBO", categoryId: 10 }]);
+    mockPrisma.category.findMany.mockResolvedValue([
+      { id: 10, name: "Supermercado", emoji: "🛒" },
+    ]);
+    mockPrisma.rule.create.mockImplementation((args: unknown) => args);
+    mockPrisma.$transaction.mockResolvedValue([]);
+
+    const result = await importRules(
+      importFile([
+        { match: " jumbo ", category: { name: "Supermercado", emoji: "🛒" } },
+        { match: "Lider", category: { name: "Supermercado", emoji: "🛒" } },
+      ])
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      created: ["Lider"],
+      skippedExisting: ["jumbo"],
+    });
+    const batch = mockPrisma.$transaction.mock.calls[0][0];
+    expect(batch).toHaveLength(1);
+  });
+
+  it("treats an empty file as a no-op (0 created, no writes)", async () => {
+    mockPrisma.rule.findMany.mockResolvedValue([]);
+    mockPrisma.category.findMany.mockResolvedValue([]);
+
+    const result = await importRules("");
+
+    expect(result).toEqual({ ok: true, created: [], skippedExisting: [] });
+    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    expect(mockPrisma.rule.create).not.toHaveBeenCalled();
   });
 });
 
