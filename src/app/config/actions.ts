@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/db";
 import { matchCategory } from "@/lib/rules";
-import { serializeRules, planImport } from "@/lib/rules-io";
+import { serializeRules, planImport, type ImportReport } from "@/lib/rules-io";
 import {
   computeSuggestions,
   type RuleSuggestion,
@@ -232,16 +232,11 @@ export async function exportRules(): Promise<string> {
 // ─── Import rules ───
 
 // Reason-coded report returned to the Reglas panel after an import, or a
-// structural error that rejected the whole file (nothing written).
+// structural error that rejected the whole file (nothing written). The success
+// branch is exactly the planner's `ImportReport` plus the `ok` discriminant, so
+// the two stay in sync as report fields evolve.
 export type ImportRulesResult =
-  | {
-      ok: true;
-      created: string[];
-      createdCategories: string[];
-      skippedExisting: string[];
-      skippedInvalid: string[];
-      skippedDuplicate: string[];
-    }
+  | ({ ok: true } & ImportReport)
   | { ok: false; error: string };
 
 // Loads the existing rules + categories, delegates every decision to the pure
