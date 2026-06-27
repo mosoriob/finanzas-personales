@@ -123,3 +123,79 @@ export async function deleteCategory(
   revalidatePath("/");
   return { ok: true };
 }
+
+// ─── Rules ───
+
+export type RuleMutationResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+async function findRuleByMatch(match: string, excludeId?: number) {
+  // SQLite (via Prisma) has no `mode: "insensitive"`, so compare case-insensitively
+  // in memory. The DB still enforces a COLLATE NOCASE UNIQUE index as a backstop.
+  const needle = match.trim().toLowerCase();
+  const rules = await prisma.rule.findMany();
+  return rules.find(
+    (r) => r.match.trim().toLowerCase() === needle && r.id !== excludeId
+  );
+}
+
+export async function createRule(data: {
+  match: string;
+  categoryId: number;
+}): Promise<RuleMutationResult> {
+  const trimmedMatch = data.match.trim();
+  if (!trimmedMatch) {
+    return { ok: false, error: "El texto a buscar no puede estar vacío" };
+  }
+
+  const category = await prisma.category.findUnique({
+    where: { id: data.categoryId },
+  });
+  if (!category) return { ok: false, error: "Categoría no encontrada" };
+
+  const duplicate = await findRuleByMatch(trimmedMatch);
+  if (duplicate) {
+    return { ok: false, error: "Ya existe una regla con ese texto" };
+  }
+
+  await prisma.rule.create({
+    data: { match: trimmedMatch, categoryId: data.categoryId },
+  });
+
+  revalidatePath("/config");
+  return { ok: true };
+}
+
+export async function updateRule(
+  id: number,
+  data: { match: string; categoryId: number }
+): Promise<RuleMutationResult> {
+  const trimmedMatch = data.match.trim();
+  if (!trimmedMatch) {
+    return { ok: false, error: "El texto a buscar no puede estar vacío" };
+  }
+
+  const category = await prisma.category.findUnique({
+    where: { id: data.categoryId },
+  });
+  if (!category) return { ok: false, error: "Categoría no encontrada" };
+
+  const duplicate = await findRuleByMatch(trimmedMatch, id);
+  if (duplicate) {
+    return { ok: false, error: "Ya existe una regla con ese texto" };
+  }
+
+  await prisma.rule.update({
+    where: { id },
+    data: { match: trimmedMatch, categoryId: data.categoryId },
+  });
+
+  revalidatePath("/config");
+  return { ok: true };
+}
+
+export async function deleteRule(id: number): Promise<void> {
+  await prisma.rule.delete({ where: { id } });
+  revalidatePath("/config");
+}

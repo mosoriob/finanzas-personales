@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { createAccount, deleteAccount, createCategory, toggleAccountVisibility, updateCategory } from "./actions";
+import { createAccount, deleteAccount, createCategory, toggleAccountVisibility, updateCategory, createRule, updateRule, deleteRule } from "./actions";
 import { DeleteCategoryDialog } from "@/components/DeleteCategoryDialog";
 import { AUTO_CATEGORIZATION_NAMES } from "@/lib/constants";
 
@@ -30,7 +30,7 @@ const COLOR_SWATCHES = [
   "#ef4444",
 ];
 
-type Tab = "cuentas" | "categorias" | "bancos";
+type Tab = "cuentas" | "categorias" | "reglas" | "bancos";
 
 interface Account {
   id: number;
@@ -48,12 +48,20 @@ interface Category {
   _count: { transactions: number };
 }
 
+interface Rule {
+  id: number;
+  match: string;
+  categoryId: number;
+  category: { id: number; name: string; emoji: string };
+}
+
 interface Props {
   accounts: Account[];
   categories: Category[];
+  rules: Rule[];
 }
 
-export function ConfigClient({ accounts, categories }: Props) {
+export function ConfigClient({ accounts, categories, rules }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>("bancos");
   const [selectedColor, setSelectedColor] = useState(COLOR_SWATCHES[0]);
   const [showAccountForm, setShowAccountForm] = useState(false);
@@ -110,6 +118,7 @@ export function ConfigClient({ accounts, categories }: Props) {
           { tab: "bancos" as Tab, label: "Conectar banco" },
           { tab: "cuentas" as Tab, label: "Cuentas" },
           { tab: "categorias" as Tab, label: "Categorías" },
+          { tab: "reglas" as Tab, label: "Reglas" },
         ]).map(({ tab, label }) => (
           <button
             key={tab}
@@ -128,8 +137,8 @@ export function ConfigClient({ accounts, categories }: Props) {
       {/* Left sidebar — hidden on mobile */}
       <aside className="hidden md:block w-[220px] flex-shrink-0">
         <div className="bg-white rounded-2xl border border-gray-100 p-3 flex flex-col gap-1">
-          {(["bancos", "cuentas", "categorias"] as Tab[]).map((tab) => {
-            const labels: Record<Tab, string> = { bancos: "Conectar banco", cuentas: "Cuentas", categorias: "Categorías" };
+          {(["bancos", "cuentas", "categorias", "reglas"] as Tab[]).map((tab) => {
+            const labels: Record<Tab, string> = { bancos: "Conectar banco", cuentas: "Cuentas", categorias: "Categorías", reglas: "Reglas" };
             return (
               <button
                 key={tab}
@@ -164,13 +173,15 @@ export function ConfigClient({ accounts, categories }: Props) {
             onDeleteAccount={handleDeleteAccount}
             onToggleVisibility={handleToggleVisibility}
           />
-        ) : (
+        ) : activeTab === "categorias" ? (
           <CategoriasPanel
             categories={categories}
             formRef={categoryFormRef}
             isPending={isPending}
             onCreateCategory={handleCreateCategory}
           />
+        ) : (
+          <ReglasPanel rules={rules} categories={categories} />
         )}
       </div>
     </div>
@@ -683,6 +694,321 @@ function CategoriasPanel({
           onClose={() => setDeletingCategory(null)}
           onDeleted={() => setDeletingCategory(null)}
         />
+      )}
+    </div>
+  );
+}
+
+/* ─── Reglas Panel ─── */
+
+interface ReglasPanelProps {
+  rules: Rule[];
+  categories: Category[];
+}
+
+function CategoryPicker({
+  value,
+  onChange,
+  disabled,
+  categories,
+}: {
+  value: number | "";
+  onChange: (id: number) => void;
+  disabled?: boolean;
+  categories: Category[];
+}) {
+  return (
+    <div className="relative">
+      <select
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        disabled={disabled}
+        className="w-full border border-indigo-100 rounded-xl p-2.5 text-sm text-gray-700 focus:outline-none focus:border-violet-400 transition-colors appearance-none bg-white pr-9 disabled:opacity-60"
+      >
+        <option value="" disabled>
+          Selecciona una categoría
+        </option>
+        {categories
+          .slice()
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .map((cat) => (
+            <option key={cat.id} value={cat.id}>
+              {cat.emoji} {cat.name}
+            </option>
+          ))}
+      </select>
+      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M3 5l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </span>
+    </div>
+  );
+}
+
+function ReglasPanel({ rules, categories }: ReglasPanelProps) {
+  const [newMatch, setNewMatch] = useState("");
+  const [newCategoryId, setNewCategoryId] = useState<number | "">("");
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [createPending, setCreatePending] = useState(false);
+
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editMatch, setEditMatch] = useState("");
+  const [editCategoryId, setEditCategoryId] = useState<number | "">("");
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editPending, setEditPending] = useState(false);
+
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  async function handleCreate() {
+    if (!newMatch.trim()) {
+      setCreateError("El texto a buscar no puede estar vacío");
+      return;
+    }
+    if (newCategoryId === "") {
+      setCreateError("Selecciona una categoría");
+      return;
+    }
+    setCreatePending(true);
+    setCreateError(null);
+    try {
+      const result = await createRule({ match: newMatch, categoryId: newCategoryId });
+      if (result.ok) {
+        setNewMatch("");
+        setNewCategoryId("");
+      } else {
+        setCreateError(result.error);
+      }
+    } finally {
+      setCreatePending(false);
+    }
+  }
+
+  function startEdit(rule: Rule) {
+    setEditingId(rule.id);
+    setEditMatch(rule.match);
+    setEditCategoryId(rule.categoryId);
+    setEditError(null);
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditError(null);
+  }
+
+  async function handleSaveEdit(rule: Rule) {
+    if (!editMatch.trim()) {
+      setEditError("El texto a buscar no puede estar vacío");
+      return;
+    }
+    if (editCategoryId === "") {
+      setEditError("Selecciona una categoría");
+      return;
+    }
+    setEditPending(true);
+    setEditError(null);
+    try {
+      const result = await updateRule(rule.id, { match: editMatch, categoryId: editCategoryId });
+      if (result.ok) {
+        setEditingId(null);
+      } else {
+        setEditError(result.error);
+      }
+    } finally {
+      setEditPending(false);
+    }
+  }
+
+  async function handleDelete(id: number) {
+    setDeletingId(id);
+    try {
+      await deleteRule(id);
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  const hasCategories = categories.length > 0;
+
+  return (
+    <div className="flex flex-col gap-5">
+      {/* Header */}
+      <div>
+        <h2 className="text-xl font-semibold text-gray-800">Reglas</h2>
+        <p className="text-sm text-gray-400 mt-0.5">
+          Si la descripción de una transacción contiene el texto, se asigna la categoría.
+          Los cambios se aplican en la próxima sincronización.
+        </p>
+      </div>
+
+      {/* Create rule form */}
+      <div className="bg-white rounded-2xl border border-gray-100 p-5">
+        <h3 className="text-sm font-semibold text-gray-700 mb-4">Crear regla</h3>
+        {!hasCategories ? (
+          <p className="text-sm text-gray-400">
+            Crea al menos una categoría antes de definir reglas.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="flex flex-col gap-1.5 flex-1">
+                <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                  Texto a buscar
+                </label>
+                <input
+                  type="text"
+                  value={newMatch}
+                  onChange={(e) => setNewMatch(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleCreate();
+                  }}
+                  placeholder="Ej. JUMBO"
+                  disabled={createPending}
+                  className="border border-indigo-100 rounded-xl p-2.5 text-sm text-gray-700 placeholder-gray-300 focus:outline-none focus:border-violet-400 transition-colors disabled:opacity-60"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5 flex-1">
+                <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                  Categoría
+                </label>
+                <CategoryPicker
+                  value={newCategoryId}
+                  onChange={setNewCategoryId}
+                  disabled={createPending}
+                  categories={categories}
+                />
+              </div>
+              <div className="flex items-end">
+                <button
+                  type="button"
+                  onClick={handleCreate}
+                  disabled={createPending}
+                  className="bg-indigo-500 text-white rounded-xl px-6 py-2.5 text-sm font-semibold hover:bg-indigo-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap w-full sm:w-auto"
+                >
+                  {createPending ? "Guardando…" : "Crear regla"}
+                </button>
+              </div>
+            </div>
+            {createError && <p className="text-xs text-red-500 pl-1">{createError}</p>}
+          </div>
+        )}
+      </div>
+
+      {/* Rules list */}
+      {rules.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-gray-100 px-5 py-10 text-center text-sm text-gray-400">
+          No hay reglas registradas aún.
+        </div>
+      ) : (
+        <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100">
+            <h3 className="text-sm font-semibold text-gray-700">
+              Reglas existentes ({rules.length})
+            </h3>
+          </div>
+          <ul className="divide-y divide-gray-100">
+            {rules.map((rule) => {
+              const isEditing = editingId === rule.id;
+
+              if (isEditing) {
+                return (
+                  <li key={rule.id} className="flex flex-col gap-2 px-5 py-3.5">
+                    <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                      <input
+                        type="text"
+                        value={editMatch}
+                        onChange={(e) => setEditMatch(e.target.value)}
+                        disabled={editPending}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleSaveEdit(rule);
+                          if (e.key === "Escape") cancelEdit();
+                        }}
+                        autoFocus
+                        className="flex-1 border border-indigo-200 rounded-lg p-2 text-sm text-gray-700 focus:outline-none focus:border-violet-400 disabled:opacity-60"
+                      />
+                      <div className="flex-1">
+                        <CategoryPicker
+                          value={editCategoryId}
+                          onChange={setEditCategoryId}
+                          disabled={editPending}
+                          categories={categories}
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleSaveEdit(rule)}
+                          disabled={editPending}
+                          className="text-xs bg-indigo-500 text-white rounded-lg px-3 py-1.5 hover:bg-indigo-600 transition-colors disabled:opacity-60 whitespace-nowrap"
+                        >
+                          {editPending ? "Guardando…" : "Guardar"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={cancelEdit}
+                          disabled={editPending}
+                          className="text-xs border border-gray-200 text-gray-500 rounded-lg px-3 py-1.5 hover:bg-gray-50 transition-colors disabled:opacity-60 whitespace-nowrap"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                    {editError && <p className="text-xs text-red-500 pl-1">{editError}</p>}
+                  </li>
+                );
+              }
+
+              return (
+                <li key={rule.id} className="flex items-center gap-3 px-5 py-3.5">
+                  <div className="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-mono text-gray-700 bg-gray-50 rounded px-2 py-0.5 break-all">
+                      {rule.match}
+                    </span>
+                    <span className="text-gray-300">→</span>
+                    <span className="text-sm text-gray-600 whitespace-nowrap">
+                      {rule.category.emoji} {rule.category.name}
+                    </span>
+                  </div>
+                  <div className="flex gap-1 flex-shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => startEdit(rule)}
+                      title="Editar regla"
+                      className="text-gray-400 hover:text-indigo-500 transition-colors p-1.5 rounded-lg hover:bg-indigo-50"
+                    >
+                      <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+                        <path
+                          d="M10.5 1.5L13.5 4.5L5 13H2V10L10.5 1.5Z"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(rule.id)}
+                      disabled={deletingId === rule.id}
+                      title="Eliminar regla"
+                      className="text-gray-400 hover:text-red-500 transition-colors p-1.5 rounded-lg hover:bg-red-50 disabled:opacity-50"
+                    >
+                      <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+                        <path
+                          d="M2 4H13M6 4V2.5H9V4M5 4V12H10V4"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
       )}
     </div>
   );
