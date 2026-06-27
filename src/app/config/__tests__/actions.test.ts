@@ -26,6 +26,10 @@ vi.mock("@/lib/db", () => ({
       delete: vi.fn(),
       updateMany: vi.fn(),
     },
+    dismissedSuggestion: {
+      findMany: vi.fn(),
+      upsert: vi.fn(),
+    },
     $transaction: vi.fn(),
   },
 }));
@@ -40,6 +44,9 @@ import {
   applyRulesToExisting,
   exportRules,
   importRules,
+  loadRuleSuggestions,
+  dismissSuggestion,
+  acceptSuggestion,
 } from "../actions";
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
@@ -62,6 +69,10 @@ const mockPrisma = prisma as unknown as {
     update: ReturnType<typeof vi.fn>;
     delete: ReturnType<typeof vi.fn>;
     updateMany: ReturnType<typeof vi.fn>;
+  };
+  dismissedSuggestion: {
+    findMany: ReturnType<typeof vi.fn>;
+    upsert: ReturnType<typeof vi.fn>;
   };
   $transaction: ReturnType<typeof vi.fn>;
 };
@@ -495,5 +506,75 @@ describe("applyRulesToExisting", () => {
     const result = await applyRulesToExisting();
     expect(result).toEqual({ ok: true, updated: 0 });
     expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+  });
+});
+
+// ─── Rule suggestions ───
+
+describe("loadRuleSuggestions", () => {
+  it("delegates to computeSuggestions and surfaces the result", async () => {
+    mockPrisma.transaction.findMany.mockResolvedValue([
+      { description: "MARIA COOKS SPA VALPARAISO", categoryId: 10, manuallySet: true },
+      { description: "MARIA COOKS LTDA", categoryId: 10, manuallySet: true },
+    ]);
+    mockPrisma.rule.findMany.mockResolvedValue([]);
+    mockPrisma.dismissedSuggestion.findMany.mockResolvedValue([]);
+    mockPrisma.category.findFirst.mockResolvedValue({ id: 99, name: "Otro" });
+
+    const result = await loadRuleSuggestions();
+    expect(result).toEqual({
+      suggestions: [{ match: "MARIA COOKS", categoryId: 10, count: 2 }],
+      ambiguous: [],
+    });
+  });
+});
+
+describe("dismissSuggestion", () => {
+  it("upserts the dismissal keyed on (match, categoryId)", async () => {
+    mockPrisma.dismissedSuggestion.upsert.mockResolvedValue({});
+    const result = await dismissSuggestion({ match: "  MARIA COOKS  ", categoryId: 10 });
+    expect(result).toEqual({ ok: true });
+    expect(mockPrisma.dismissedSuggestion.upsert).toHaveBeenCalledWith({
+      where: { match_categoryId: { match: "MARIA COOKS", categoryId: 10 } },
+      update: {},
+      create: { match: "MARIA COOKS", categoryId: 10 },
+    });
+  });
+});
+
+describe("acceptSuggestion", () => {
+  it("creates the rule then sweeps matching 'Otro' transactions, reporting the count", async () => {
+    // createRule path: category exists, no duplicate.
+    mockPrisma.category.findUnique.mockResolvedValue({ id: 10, name: "Cafetería" });
+    mockPrisma.rule.create.mockResolvedValue({ id: 1, match: "MARIA COOKS", categoryId: 10 });
+    // "Otro" exists; two of its transactions match the new rule.
+    mockPrisma.category.findFirst.mockResolvedValue({ id: 99, name: "Otro" });
+    mockPrisma.transaction.findMany.mockResolvedValue([
+      { id: 1, description: "MARIA COOKS SPA VALPARAISO" },
+      { id: 2, description: "MARIA COOKS LTDA" },
+      { id: 3, description: "NADA QUE VER" },
+    ]);
+    // findRuleByMatch (createRule) then the apply load both read rules.
+    mockPrisma.rule.findMany
+      .mockResolvedValueOnce([]) // duplicate check inside createRule
+      .mockResolvedValueOnce([{ id: 1, match: "MARIA COOKS", categoryId: 10 }]);
+    mockPrisma.transaction.updateMany.mockResolvedValue({ count: 2 });
+
+    const result = await acceptSuggestion({ match: "MARIA COOKS", categoryId: 10 });
+    expect(result).toEqual({ ok: true, recategorized: 2 });
+    expect(mockPrisma.rule.create).toHaveBeenCalledWith({
+      data: { match: "MARIA COOKS", categoryId: 10 },
+    });
+    expect(mockPrisma.transaction.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: [1, 2] } },
+      data: { categoryId: 10 },
+    });
+  });
+
+  it("propagates a createRule failure without touching transactions", async () => {
+    mockPrisma.category.findUnique.mockResolvedValue(null); // category missing
+    const result = await acceptSuggestion({ match: "MARIA COOKS", categoryId: 999 });
+    expect(result).toEqual({ ok: false, error: "Categoría no encontrada" });
+    expect(mockPrisma.transaction.updateMany).not.toHaveBeenCalled();
   });
 });

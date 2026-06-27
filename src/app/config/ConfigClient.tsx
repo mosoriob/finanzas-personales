@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useRef } from "react";
-import { createAccount, deleteAccount, createCategory, toggleAccountVisibility, updateCategory, createRule, updateRule, deleteRule, previewApplyRules, applyRulesToExisting, exportRules, importRules } from "./actions";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { createAccount, deleteAccount, createCategory, toggleAccountVisibility, updateCategory, createRule, updateRule, deleteRule, previewApplyRules, applyRulesToExisting, exportRules, importRules, loadRuleSuggestions, dismissSuggestion, acceptSuggestion } from "./actions";
 import type { ImportRulesResult } from "./actions";
+import type { RuleSuggestion } from "@/lib/rule-suggestions";
 import { DeleteCategoryDialog } from "@/components/DeleteCategoryDialog";
 import { EmojiPicker } from "@/components/EmojiPicker";
 import { AUTO_CATEGORIZATION_NAMES } from "@/lib/constants";
@@ -748,6 +749,129 @@ function CategoryPicker({
   );
 }
 
+// Suggested rules mined from the user's manual categorizations. Recomputed live
+// each time the panel mounts (and after every accept/dismiss) so the list never
+// goes stale. The guessed match is editable before accepting; accepting creates
+// the rule and sweeps matching "Otro" transactions, then reports the count.
+function SuggestedRules({ categories }: { categories: Category[] }) {
+  const [suggestions, setSuggestions] = useState<RuleSuggestion[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [edited, setEdited] = useState<Record<string, string>>({});
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const categoryById = new Map(categories.map((c) => [c.id, c]));
+  const keyOf = (s: RuleSuggestion) => `${s.categoryId}:${s.match}`;
+
+  const reload = useCallback(async () => {
+    const result = await loadRuleSuggestions();
+    setSuggestions(result.suggestions);
+    setEdited({});
+    setLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    reload();
+  }, [reload]);
+
+  async function handleAccept(s: RuleSuggestion) {
+    const key = keyOf(s);
+    const match = (edited[key] ?? s.match).trim();
+    if (!match) return;
+    setBusyKey(key);
+    setMessage(null);
+    try {
+      const result = await acceptSuggestion({ match, categoryId: s.categoryId });
+      if (result.ok) {
+        setMessage(
+          `Regla creada, ${result.recategorized} ${result.recategorized === 1 ? "transacción recategorizada" : "transacciones recategorizadas"}.`
+        );
+        await reload();
+      } else {
+        setMessage(result.error);
+      }
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function handleDismiss(s: RuleSuggestion) {
+    const key = keyOf(s);
+    setBusyKey(key);
+    try {
+      await dismissSuggestion({ match: s.match, categoryId: s.categoryId });
+      await reload();
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  if (!loaded || suggestions.length === 0) {
+    // Stay quiet until there is something to propose — no empty-state noise.
+    return message ? (
+      <div className="bg-white rounded-2xl border border-gray-100 p-5">
+        <p className="text-xs text-green-600 pl-1">{message}</p>
+      </div>
+    ) : null;
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-indigo-100 bg-indigo-50/30 p-5">
+      <h3 className="text-sm font-semibold text-gray-700 mb-1">Reglas sugeridas</h3>
+      <p className="text-sm text-gray-400 mb-4">
+        Basadas en transacciones que categorizaste a mano. Revisa el texto, ajústalo si hace falta y acéptalo.
+      </p>
+      {message && <p className="text-xs text-green-600 mb-3 pl-1">{message}</p>}
+      <ul className="flex flex-col gap-2">
+        {suggestions.map((s) => {
+          const key = keyOf(s);
+          const category = categoryById.get(s.categoryId);
+          const value = edited[key] ?? s.match;
+          const busy = busyKey === key;
+          return (
+            <li
+              key={key}
+              className="flex flex-col sm:flex-row sm:items-center gap-2 bg-white rounded-xl border border-gray-100 px-3 py-2.5"
+            >
+              <input
+                type="text"
+                value={value}
+                onChange={(e) => setEdited((m) => ({ ...m, [key]: e.target.value }))}
+                disabled={busy}
+                className="flex-1 border border-indigo-100 rounded-lg p-2 text-sm font-mono text-gray-700 focus:outline-none focus:border-violet-400 disabled:opacity-60"
+              />
+              <span className="text-sm text-gray-600 whitespace-nowrap">
+                → {category ? `${category.emoji} ${category.name}` : s.categoryId}
+              </span>
+              <span className="text-xs text-gray-400 whitespace-nowrap">
+                {s.count} {s.count === 1 ? "transacción" : "transacciones"}
+              </span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleAccept(s)}
+                  disabled={busy}
+                  className="text-xs bg-indigo-500 text-white rounded-lg px-3 py-1.5 hover:bg-indigo-600 transition-colors disabled:opacity-60 whitespace-nowrap"
+                >
+                  {busy ? "…" : "Aceptar"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDismiss(s)}
+                  disabled={busy}
+                  className="text-xs border border-gray-200 text-gray-500 rounded-lg px-3 py-1.5 hover:bg-gray-50 transition-colors disabled:opacity-60 whitespace-nowrap"
+                >
+                  Descartar
+                </button>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
 function ReglasPanel({ rules, categories }: ReglasPanelProps) {
   const [newMatch, setNewMatch] = useState("");
   const [newCategoryId, setNewCategoryId] = useState<number | "">("");
@@ -982,6 +1106,9 @@ function ReglasPanel({ rules, categories }: ReglasPanelProps) {
           )}
         </div>
       )}
+
+      {/* Suggested rules (mined from manual categorizations) */}
+      <SuggestedRules categories={categories} />
 
       {/* Create rule form */}
       <div className="bg-white rounded-2xl border border-gray-100 p-5">

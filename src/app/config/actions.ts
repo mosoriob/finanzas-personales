@@ -3,6 +3,11 @@
 import { prisma } from "@/lib/db";
 import { matchCategory } from "@/lib/rules";
 import { serializeRules, planImport } from "@/lib/rules-io";
+import {
+  computeSuggestions,
+  type RuleSuggestion,
+  type AmbiguousMerchant,
+} from "@/lib/rule-suggestions";
 import { revalidatePath } from "next/cache";
 
 export async function createAccount(formData: FormData) {
@@ -260,6 +265,95 @@ export async function importRules(
   }
 
   return { ok: true, ...plan.report };
+}
+
+// ─── Rule suggestions (from manual categorizations) ───
+
+export type LoadSuggestionsResult = {
+  suggestions: RuleSuggestion[];
+  ambiguous: AmbiguousMerchant[];
+};
+
+// Loads the live data (transactions + rules + dismissals) and delegates every
+// decision to the pure `computeSuggestions` seam. Recomputed each call so the
+// panel always reflects the latest categorizations and rules (no stale store).
+// When "Otro" is missing, every category is treated as suggestible (no rows are
+// excluded as "Otro"), which is harmless on a DB that should always have it.
+export async function loadRuleSuggestions(): Promise<LoadSuggestionsResult> {
+  const [transactions, rules, dismissals, otro] = await Promise.all([
+    prisma.transaction.findMany({
+      select: { description: true, categoryId: true, manuallySet: true },
+    }),
+    prisma.rule.findMany({ select: { id: true, match: true, categoryId: true } }),
+    prisma.dismissedSuggestion.findMany({
+      select: { match: true, categoryId: true },
+    }),
+    prisma.category.findFirst({ where: { name: "Otro" } }),
+  ]);
+
+  return computeSuggestions(transactions, rules, dismissals, otro?.id ?? -1);
+}
+
+// Records a dismissal so the suggestion never reappears. Idempotent: a repeat
+// dismissal of the same (match, categoryId) is a no-op thanks to the unique key.
+export async function dismissSuggestion(data: {
+  match: string;
+  categoryId: number;
+}): Promise<{ ok: true }> {
+  const match = data.match.trim();
+  await prisma.dismissedSuggestion.upsert({
+    where: { match_categoryId: { match, categoryId: data.categoryId } },
+    update: {},
+    create: { match, categoryId: data.categoryId },
+  });
+  revalidatePath("/config");
+  return { ok: true };
+}
+
+export type AcceptSuggestionResult =
+  | { ok: true; recategorized: number }
+  | { ok: false; error: string };
+
+// Accepting a suggestion creates the rule (reusing the validated `createRule`
+// seam) and then immediately sweeps any matching "Otro" transactions into the
+// target category, returning how many were recategorized. Only "Otro"
+// transactions are ever touched — manual categorizations are never overwritten
+// — so the auto-apply is safe. Reassignment respects the full rule engine's
+// longest-match resolution, counting only transactions that land in the new
+// category.
+export async function acceptSuggestion(data: {
+  match: string;
+  categoryId: number;
+}): Promise<AcceptSuggestionResult> {
+  const created = await createRule(data);
+  if (!created.ok) return created;
+
+  const otro = await prisma.category.findFirst({ where: { name: "Otro" } });
+  if (!otro) return { ok: true, recategorized: 0 };
+
+  const [transactions, rules] = await Promise.all([
+    prisma.transaction.findMany({
+      where: { categoryId: otro.id },
+      select: { id: true, description: true },
+    }),
+    prisma.rule.findMany({ select: { id: true, match: true, categoryId: true } }),
+  ]);
+
+  const ids = transactions
+    .filter((t) => matchCategory(t.description, rules) === data.categoryId)
+    .map((t) => t.id);
+
+  if (ids.length > 0) {
+    await prisma.transaction.updateMany({
+      where: { id: { in: ids } },
+      data: { categoryId: data.categoryId },
+    });
+    revalidatePath("/config");
+    revalidatePath("/transacciones");
+    revalidatePath("/");
+  }
+
+  return { ok: true, recategorized: ids.length };
 }
 
 // ─── Apply rules to existing transactions ───

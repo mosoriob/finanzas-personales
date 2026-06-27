@@ -49,6 +49,10 @@ model Transaction {
   categoryId   Int
   familiar     String?
   isReimbursed Boolean  @default(false)
+  // True when the category was set by hand through the app — the evidence the
+  // rule-suggestion engine mines. Backfilled true for pre-existing non-"Otro"
+  // transactions that match no rule (which can only have come from a manual edit).
+  manuallySet  Boolean  @default(false)
   account      Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
   category     Category @relation(fields: [categoryId], references: [id])
   createdAt    DateTime @default(now())
@@ -56,4 +60,16 @@ model Transaction {
   @@index([accountId])
   @@index([categoryId])
   @@index([date])
+}
+
+// A suggestion the user dismissed, keyed exactly on its (match, categoryId) so
+// it is never proposed again. v1 uses exact keying; a drifted LCS-derived match
+// may reappear once (accepted trade-off).
+model DismissedSuggestion {
+  id         Int      @id @default(autoincrement())
+  match      String
+  categoryId Int
+  createdAt  DateTime @default(now())
+
+  @@unique([match, categoryId])
 }

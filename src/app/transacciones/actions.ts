@@ -20,9 +20,11 @@ export async function updateTransactionCategory(
   }
 
   try {
+    // Setting a category here is, by definition, a hand edit: mark it so the
+    // rule-suggestion engine can mine these deliberate decisions as evidence.
     await prisma.transaction.update({
       where: { id: transactionId },
-      data: { categoryId },
+      data: { categoryId, manuallySet: true },
     });
   } catch {
     return { ok: false, error: "No se pudo actualizar" };
