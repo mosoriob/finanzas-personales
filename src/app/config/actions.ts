@@ -115,6 +115,10 @@ export async function deleteCategory(
       where: { categoryId: id },
       data: { categoryId: replacementCategoryId },
     }),
+    prisma.rule.updateMany({
+      where: { categoryId: id },
+      data: { categoryId: replacementCategoryId },
+    }),
     prisma.category.delete({ where: { id } }),
   ]);
 

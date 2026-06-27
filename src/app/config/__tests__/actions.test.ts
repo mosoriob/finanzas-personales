@@ -17,6 +17,9 @@ vi.mock("@/lib/db", () => ({
     transaction: {
       updateMany: vi.fn(),
     },
+    rule: {
+      updateMany: vi.fn(),
+    },
     $transaction: vi.fn(),
   },
 }));
@@ -33,6 +36,9 @@ const mockPrisma = prisma as unknown as {
     delete: ReturnType<typeof vi.fn>;
   };
   transaction: {
+    updateMany: ReturnType<typeof vi.fn>;
+  };
+  rule: {
     updateMany: ReturnType<typeof vi.fn>;
   };
   $transaction: ReturnType<typeof vi.fn>;
@@ -135,6 +141,27 @@ describe("deleteCategory", () => {
     expect(revalidatePath).toHaveBeenCalledWith("/config");
     expect(revalidatePath).toHaveBeenCalledWith("/transacciones");
     expect(revalidatePath).toHaveBeenCalledWith("/");
+  });
+
+  it("repoints rules to the replacement category in the same transaction", async () => {
+    mockPrisma.category.findUnique.mockResolvedValueOnce({ id: 1, name: "Supermercado" });
+    mockPrisma.category.findUnique.mockResolvedValueOnce({ id: 2, name: "Otro" });
+    mockPrisma.$transaction.mockResolvedValue([]);
+
+    const result = await deleteCategory(1, 2);
+    expect(result).toEqual({ ok: true });
+
+    // The three writes (transactions, rules, delete) must be passed together to $transaction.
+    expect(mockPrisma.rule.updateMany).toHaveBeenCalledWith({
+      where: { categoryId: 1 },
+      data: { categoryId: 2 },
+    });
+    expect(mockPrisma.transaction.updateMany).toHaveBeenCalledWith({
+      where: { categoryId: 1 },
+      data: { categoryId: 2 },
+    });
+    const batch = mockPrisma.$transaction.mock.calls[0][0];
+    expect(batch).toHaveLength(3);
   });
 
   it("revalidates all needed paths on success", async () => {
