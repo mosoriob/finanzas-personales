@@ -254,6 +254,7 @@ export default async function DashboardPage() {
               key={account.id}
               className={`flex flex-col gap-0.5 rounded-2xl border-2 ${borderClass} bg-[#f9f9f9] px-5 py-3.5 min-w-[160px]`}
             >
+              <p className="text-[11px] uppercase text-gray-400 truncate">{account.bank}</p>
               <p className="text-[13px] font-semibold text-gray-700 truncate">{account.name}</p>
               <p className="text-lg font-bold text-gray-900 tabular-nums">
                 {formatCLP(account.balance)}
