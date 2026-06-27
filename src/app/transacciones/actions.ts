@@ -90,3 +90,65 @@ export async function updateSharedFlags(
 
   revalidatePath("/transacciones");
 }
+
+export type CreateTransactionResult =
+  | {
+      ok: true;
+      transaction: {
+        id: number;
+        date: string;
+        description: string;
+        note: string | null;
+        amount: number;
+        accountId: number;
+        categoryId: number;
+        isShared: boolean;
+        isReimbursed: boolean;
+        createdAt: string;
+      };
+    }
+  | { ok: false; error: string };
+
+export async function createTransaction(data: {
+  amount: number;
+  type: "expense" | "income";
+  description: string;
+  date: string;
+  accountId: number;
+  categoryId: number;
+  note?: string;
+  isShared?: boolean;
+  isReimbursed?: boolean;
+}): Promise<CreateTransactionResult> {
+  const finalAmount =
+    data.type === "expense" ? -Math.abs(data.amount) : Math.abs(data.amount);
+
+  try {
+    const transaction = await prisma.transaction.create({
+      data: {
+        amount: finalAmount,
+        description: data.description.trim(),
+        date: new Date(data.date),
+        accountId: data.accountId,
+        categoryId: data.categoryId,
+        note: data.note?.trim() || null,
+        isShared: data.isShared ?? false,
+        isReimbursed: data.isReimbursed ?? false,
+      },
+    });
+
+    revalidatePath("/transacciones");
+    revalidatePath("/");
+
+    return {
+      ok: true,
+      transaction: {
+        ...transaction,
+        date: transaction.date.toISOString(),
+        createdAt: transaction.createdAt.toISOString(),
+      },
+    };
+  } catch {
+    return { ok: false, error: "No se pudo crear la transacción" };
+  }
+}
