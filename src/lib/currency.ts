@@ -36,3 +36,14 @@ export function formatMoney(amount: number, currency?: string | null): string {
 export function isCLP(transaction: { currency?: string | null }): boolean {
   return transaction.currency == null || transaction.currency === "CLP";
 }
+
+/**
+ * Normalize a scraped movement's currency to the form persisted on
+ * Transaction.currency. Only "USD" or null is ever written: "USD" stays,
+ * everything else (absent/"CLP") becomes null (CLP). This is the storage-side
+ * counterpart of the display/aggregation helpers above, keeping the whole
+ * currency convention in one module.
+ */
+export function toStoredCurrency(currency?: string | null): "USD" | null {
+  return currency === "USD" ? "USD" : null;
+}

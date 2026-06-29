@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { matchCategory } from "@/lib/rules";
+import { toStoredCurrency } from "@/lib/currency";
 import { spawn } from "child_process";
 
 // The scraper emits an optional per-movement `currency` ("USD" for the BCI
@@ -112,7 +113,7 @@ export async function POST(req: NextRequest) {
 
         // Currency is part of the identity: a USD charge and a coincidentally
         // same-amount peso charge are distinct rows. Absent = null (CLP).
-        const currency = m.currency === "USD" ? "USD" : null;
+        const currency = toStoredCurrency(m.currency);
         const existing = await prisma.transaction.findFirst({
           where: { date, description: m.description, amount: m.amount, accountId: dbAccount.id, currency },
         });
@@ -147,7 +148,7 @@ export async function POST(req: NextRequest) {
         const [day, month, year] = m.date.split("-").map(Number);
         const date = new Date(Date.UTC(year, month - 1, day));
 
-        const currency = m.currency === "USD" ? "USD" : null;
+        const currency = toStoredCurrency(m.currency);
         const existing = await prisma.transaction.findFirst({
           where: { date, description: m.description, amount: m.amount, accountId: dbAccount.id, currency },
         });

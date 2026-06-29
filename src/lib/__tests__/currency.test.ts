@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatMoney, isCLP } from "@/lib/currency";
+import { formatMoney, isCLP, toStoredCurrency } from "@/lib/currency";
 
 describe("formatMoney", () => {
   it("formats a negative USD charge as -US$ with the sign inside the string", () => {
@@ -42,5 +42,23 @@ describe("isCLP", () => {
 
   it('excludes a row with "USD" currency', () => {
     expect(isCLP({ currency: "USD" })).toBe(false);
+  });
+});
+
+describe("toStoredCurrency", () => {
+  it('keeps "USD" as the stored marker', () => {
+    expect(toStoredCurrency("USD")).toBe("USD");
+  });
+
+  it('normalizes "CLP" to null (the absent-means-CLP convention)', () => {
+    expect(toStoredCurrency("CLP")).toBeNull();
+  });
+
+  it("normalizes an absent currency to null", () => {
+    expect(toStoredCurrency()).toBeNull();
+  });
+
+  it("normalizes any unexpected value to null", () => {
+    expect(toStoredCurrency("EUR")).toBeNull();
   });
 });
