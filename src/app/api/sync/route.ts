@@ -3,7 +3,11 @@ import { prisma } from "@/lib/db";
 import { matchCategory } from "@/lib/rules";
 import { spawn } from "child_process";
 
-type ScrapeResult = { success: boolean; error?: string; bank?: string; accounts?: Array<{ label?: string; balance?: number; movements: Array<{ date: string; description: string; amount: number }> }>; creditCards?: Array<{ label?: string; national?: { used?: number }; movements: Array<{ date: string; description: string; amount: number }> }> };
+// The scraper emits an optional per-movement `currency` ("USD" for the BCI
+// "Internacional USD" tab; absent = CLP). We consume it as-is. null/absent is
+// persisted as null (CLP) so existing rows stay valid without a backfill.
+type Movement = { date: string; description: string; amount: number; currency?: "CLP" | "USD" };
+type ScrapeResult = { success: boolean; error?: string; bank?: string; accounts?: Array<{ label?: string; balance?: number; movements: Movement[] }>; creditCards?: Array<{ label?: string; national?: { used?: number }; movements: Movement[] }> };
 
 function runScraper(bankId: string, rut: string, password: string): Promise<ScrapeResult> {
   return new Promise((resolve, reject) => {
@@ -106,8 +110,11 @@ export async function POST(req: NextRequest) {
         const [day, month, year] = m.date.split("-").map(Number);
         const date = new Date(Date.UTC(year, month - 1, day));
 
+        // Currency is part of the identity: a USD charge and a coincidentally
+        // same-amount peso charge are distinct rows. Absent = null (CLP).
+        const currency = m.currency === "USD" ? "USD" : null;
         const existing = await prisma.transaction.findFirst({
-          where: { date, description: m.description, amount: m.amount, accountId: dbAccount.id },
+          where: { date, description: m.description, amount: m.amount, accountId: dbAccount.id, currency },
         });
 
         if (existing) { skippedCount++; continue; }
@@ -116,7 +123,7 @@ export async function POST(req: NextRequest) {
         const categoryId = matched ?? catMap["Otro"];
 
         await prisma.transaction.create({
-          data: { date, description: m.description, amount: m.amount, accountId: dbAccount.id, categoryId },
+          data: { date, description: m.description, amount: m.amount, accountId: dbAccount.id, categoryId, currency },
         });
         importedCount++;
       }
@@ -140,8 +147,9 @@ export async function POST(req: NextRequest) {
         const [day, month, year] = m.date.split("-").map(Number);
         const date = new Date(Date.UTC(year, month - 1, day));
 
+        const currency = m.currency === "USD" ? "USD" : null;
         const existing = await prisma.transaction.findFirst({
-          where: { date, description: m.description, amount: m.amount, accountId: dbAccount.id },
+          where: { date, description: m.description, amount: m.amount, accountId: dbAccount.id, currency },
         });
 
         if (existing) { skippedCount++; continue; }
@@ -150,7 +158,7 @@ export async function POST(req: NextRequest) {
         const categoryId = matched ?? catMap["Otro"];
 
         await prisma.transaction.create({
-          data: { date, description: m.description, amount: m.amount, accountId: dbAccount.id, categoryId },
+          data: { date, description: m.description, amount: m.amount, accountId: dbAccount.id, categoryId, currency },
         });
         importedCount++;
       }

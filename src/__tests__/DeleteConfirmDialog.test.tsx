@@ -28,6 +28,14 @@ describe('DeleteConfirmDialog', () => {
     expect(screen.getByText(/-\$45\.?230/)).toBeInTheDocument();
   });
 
+  it('renders a USD amount with the dollar sign, not pesos', () => {
+    const panel = render(
+      <DeleteConfirmDialog {...defaultProps} amount={-119} currency="USD" />,
+    ).getByTestId('dialog-panel');
+    // formatMoney(-119, "USD") => "-US$119" — confirming deletion of the right charge.
+    expect(panel.textContent).toContain('-US$119');
+  });
+
   it('renders Eliminar and Cancelar buttons', () => {
     render(<DeleteConfirmDialog {...defaultProps} />);
     expect(screen.getByRole('button', { name: /eliminar/i })).toBeInTheDocument();

@@ -45,6 +45,12 @@ model Transaction {
   description  String
   note         String?
   amount       Int
+  // Native currency of the amount. null (absent) means CLP, mirroring the
+  // scraper's convention; "USD" marks a dollar-billed charge. Only "USD" or
+  // null are ever written (application-level invariant; SQLite has no enum).
+  // USD amounts are stored natively (no FX conversion) and excluded from peso
+  // aggregates via isCLP().
+  currency     String?
   accountId    Int
   categoryId   Int
   familiar     String?

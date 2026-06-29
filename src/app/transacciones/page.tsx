@@ -48,6 +48,7 @@ export default async function TransaccionesPage({
     description: t.description,
     note: t.note,
     amount: t.amount,
+    currency: t.currency,
     familiar: isFamiliar(t.familiar) ? t.familiar : null,
     isReimbursed: t.isReimbursed,
     account: { id: t.account.id, name: t.account.name },
