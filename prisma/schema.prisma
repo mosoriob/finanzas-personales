@@ -23,6 +23,10 @@ model Category {
   id           Int           @id @default(autoincrement())
   name         String        @unique
   emoji        String        @default("📌")
+  // Excluded categories (e.g. "Movimiento interno") never contribute to any
+  // statistic — see src/lib/stats-exclusion.ts. Rows stay visible in the
+  // transactions list and the category remains selectable.
+  excluded     Boolean       @default(false)
   transactions Transaction[]
   rules        Rule[]
 }

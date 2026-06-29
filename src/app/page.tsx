@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/db";
 import { formatCLP } from "@/lib/format";
 import { formatMoney, isCLP } from "@/lib/currency";
+import { countsInStats } from "@/lib/stats-exclusion";
+import { summarizeByCategory } from "@/lib/category-breakdown";
 import { SpendingHeatmap, DailySpend } from "@/components/spending-heatmap";
 
 export const dynamic = "force-dynamic";
@@ -47,7 +49,7 @@ async function getDashboardData() {
 
     prisma.transaction.findMany({
       where: { date: { gte: prevMonthStart, lt: prevMonthEnd }, amount: { lt: 0 } },
-      select: { amount: true, currency: true },
+      select: { amount: true, currency: true, category: { select: { excluded: true } } },
     }),
 
     prisma.transaction.findMany({
@@ -58,7 +60,7 @@ async function getDashboardData() {
 
     prisma.transaction.findMany({
       where: { date: { gte: yearStart, lt: currentMonthEnd }, amount: { lt: 0 } },
-      select: { date: true, amount: true, currency: true },
+      select: { date: true, amount: true, currency: true, category: { select: { excluded: true } } },
     }),
   ]);
 
@@ -66,11 +68,11 @@ async function getDashboardData() {
   // Peso aggregates exclude USD rows (no FX source) so totals stay honestly
   // "pesos only" rather than counting e.g. USD 119 as 119 pesos.
   const currentExpenses = currentMonthTx
-    .filter((t) => t.amount < 0 && isCLP(t))
+    .filter((t) => t.amount < 0 && isCLP(t) && countsInStats(t))
     .reduce((sum, t) => sum + Math.abs(t.amount), 0);
 
   const prevExpenses = prevMonthTx
-    .filter((t) => isCLP(t))
+    .filter((t) => isCLP(t) && countsInStats(t))
     .reduce((sum, t) => sum + Math.abs(t.amount), 0);
 
   let comparisonText = "";
@@ -90,28 +92,18 @@ async function getDashboardData() {
   // Spent this month per account
   const spentByAccount = new Map<number, number>();
   for (const t of currentMonthTx) {
-    if (t.amount < 0 && isCLP(t)) {
+    if (t.amount < 0 && isCLP(t) && countsInStats(t)) {
       spentByAccount.set(t.accountId, (spentByAccount.get(t.accountId) ?? 0) + Math.abs(t.amount));
     }
   }
 
   // ── Category donut ────────────────────────────────────────────
-  const categoryMap = new Map<string, { emoji: string; total: number }>();
-  for (const t of currentMonthTx) {
-    if (t.amount < 0 && isCLP(t)) {
-      const key = t.category.name;
-      const prev = categoryMap.get(key) ?? { emoji: t.category.emoji, total: 0 };
-      categoryMap.set(key, { emoji: prev.emoji, total: prev.total + Math.abs(t.amount) });
-    }
-  }
-  const categoryBreakdown = Array.from(categoryMap.entries())
-    .map(([name, v]) => ({ name, emoji: v.emoji, total: v.total }))
-    .sort((a, b) => b.total - a.total);
+  const categoryBreakdown = summarizeByCategory(currentMonthTx);
 
   // ── Heatmap daily data ────────────────────────────────────────
   const dailyMap = new Map<string, number>();
   for (const t of yearTx) {
-    if (!isCLP(t)) continue;
+    if (!isCLP(t) || !countsInStats(t)) continue;
     const dateStr = new Date(t.date).toISOString().slice(0, 10);
     dailyMap.set(dateStr, (dailyMap.get(dateStr) ?? 0) + Math.abs(t.amount));
   }

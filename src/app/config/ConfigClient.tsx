@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { createAccount, deleteAccount, createCategory, toggleAccountVisibility, updateCategory, createRule, updateRule, deleteRule, previewApplyRules, applyRulesToExisting, exportRules, importRules, loadRuleSuggestions, dismissSuggestion, acceptSuggestion } from "./actions";
+import { createAccount, deleteAccount, createCategory, toggleAccountVisibility, updateCategory, toggleCategoryExclusion, createRule, updateRule, deleteRule, previewApplyRules, applyRulesToExisting, exportRules, importRules, loadRuleSuggestions, dismissSuggestion, acceptSuggestion } from "./actions";
 import type { ImportRulesResult } from "./actions";
 import type { RuleSuggestion } from "@/lib/rule-suggestions";
 import { DeleteCategoryDialog } from "@/components/DeleteCategoryDialog";
@@ -48,6 +48,7 @@ interface Category {
   id: number;
   name: string;
   emoji: string;
+  excluded: boolean;
   _count: { transactions: number };
 }
 
@@ -108,6 +109,15 @@ export function ConfigClient({ accounts, categories, rules }: Props) {
     try {
       await createCategory(formData);
       categoryFormRef.current?.reset();
+    } finally {
+      setIsPending(false);
+    }
+  }
+
+  async function handleToggleCategoryExclusion(id: number) {
+    setIsPending(true);
+    try {
+      await toggleCategoryExclusion(id);
     } finally {
       setIsPending(false);
     }
@@ -182,6 +192,7 @@ export function ConfigClient({ accounts, categories, rules }: Props) {
             formRef={categoryFormRef}
             isPending={isPending}
             onCreateCategory={handleCreateCategory}
+            onToggleExclusion={handleToggleCategoryExclusion}
           />
         ) : (
           <ReglasPanel rules={rules} categories={categories} />
@@ -466,6 +477,7 @@ interface CategoriasPanelProps {
   formRef: React.RefObject<HTMLFormElement | null>;
   isPending: boolean;
   onCreateCategory: (formData: FormData) => Promise<void>;
+  onToggleExclusion: (id: number) => Promise<void>;
 }
 
 function CategoriasPanel({
@@ -473,6 +485,7 @@ function CategoriasPanel({
   formRef,
   isPending,
   onCreateCategory,
+  onToggleExclusion,
 }: CategoriasPanelProps) {
   const [createEmoji, setCreateEmoji] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -632,7 +645,7 @@ function CategoriasPanel({
               return (
                 <li
                   key={cat.id}
-                  className="flex items-center gap-3 px-5 py-3.5"
+                  className={`flex items-center gap-3 px-5 py-3.5 ${cat.excluded ? "opacity-60" : ""}`}
                 >
                   <span className="text-xl leading-none w-7 flex-shrink-0">{cat.emoji}</span>
                   <div className="flex-1 min-w-0">
@@ -641,14 +654,32 @@ function CategoriasPanel({
                       {isAutoCat && (
                         <span title="Usada por auto-categorización" className="text-amber-400 text-xs">⚠️</span>
                       )}
+                      {cat.excluded && (
+                        <span className="text-[10px] font-medium text-gray-400 border border-gray-200 rounded-full px-1.5 py-0.5 whitespace-nowrap">
+                          sin estadísticas
+                        </span>
+                      )}
                     </p>
                     <p className="text-xs text-gray-400">
                       {cat._count.transactions}{" "}
                       {cat._count.transactions === 1 ? "transacción" : "transacciones"}
                     </p>
                   </div>
-                  {/* Edit / Delete icons */}
+                  {/* Exclude / Edit / Delete icons */}
                   <div className="flex gap-1 flex-shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => onToggleExclusion(cat.id)}
+                      disabled={isPending}
+                      title={cat.excluded ? "Incluir en estadísticas" : "Excluir de estadísticas"}
+                      className={`text-xs rounded-lg px-2.5 py-1.5 transition-colors disabled:opacity-60 whitespace-nowrap ${
+                        cat.excluded
+                          ? "text-indigo-500 hover:bg-indigo-50"
+                          : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"
+                      }`}
+                    >
+                      {cat.excluded ? "📊 Incluir" : "🚫 Excluir"}
+                    </button>
                     <button
                       type="button"
                       onClick={() => startEdit(cat)}
