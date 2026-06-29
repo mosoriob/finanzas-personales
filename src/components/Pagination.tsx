@@ -1,12 +1,12 @@
 'use client';
 
-import { useRouter, useSearchParams } from 'next/navigation';
 import { totalPages } from '@/lib/month-utils';
 
 interface PaginationProps {
   currentPage: number;
   totalCount: number;
   pageSize: number;
+  onPageChange: (page: number) => void;
 }
 
 function ChevronLeft() {
@@ -41,9 +41,8 @@ export function Pagination({
   currentPage,
   totalCount,
   pageSize,
+  onPageChange,
 }: PaginationProps) {
-  const router = useRouter();
-  const searchParams = useSearchParams();
   const pages = totalPages(totalCount, pageSize);
 
   if (pages <= 1) return null;
@@ -52,9 +51,7 @@ export function Pagination({
   const to = Math.min(currentPage * pageSize, totalCount);
 
   function goToPage(page: number) {
-    const params = new URLSearchParams(searchParams.toString());
-    params.set('pagina', String(page));
-    router.push(`?${params.toString()}`);
+    onPageChange(page);
   }
 
   // Build a compact page range: show first, last, current ±1, and ellipsis
