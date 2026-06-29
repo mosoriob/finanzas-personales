@@ -10,6 +10,8 @@ import {
 } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatCLP } from '@/lib/format';
+import { formatMoney } from '@/lib/currency';
+import { summarizeTransactions, excludedUsdLabel } from '@/lib/transaction-summary';
 import { CategoryPicker } from '@/components/CategoryPicker';
 import { MonthPicker } from '@/components/MonthPicker';
 import { Pagination } from '@/components/Pagination';
@@ -29,7 +31,6 @@ import {
   familiarToDropdownValue,
   dropdownValueToFamiliar,
   householdFilterLabel,
-  householdPendingTotals,
   FAMILIAR_SHORT_LABEL,
   FAMILIAR_VALUES,
   type Familiar,
@@ -54,6 +55,7 @@ type Transaction = {
   description: string;
   note: string | null;
   amount: number;
+  currency: string | null;
   familiar: Familiar | null;
   isReimbursed: boolean;
   account: Account;
@@ -394,13 +396,14 @@ export function TransaccionesClient({
       ).pageItems,
     [optimisticTransactions, search, accountFilter, categoryFilter, householdFilter],
   );
-  const summaryExpenses = filteredAll
-    .filter((t) => t.amount < 0)
-    .reduce((acc, t) => acc + t.amount, 0);
-  const summaryIncome = filteredAll
-    .filter((t) => t.amount > 0)
-    .reduce((acc, t) => acc + t.amount, 0);
-  const pendingByHousehold = householdPendingTotals(filteredAll);
+  // Peso-only totals: USD rows are excluded so the totals never silently
+  // undercount. excludedUsdCount drives the integrity indicator below.
+  const {
+    expenses: summaryExpenses,
+    income: summaryIncome,
+    pendingByHousehold,
+    excludedUsdCount,
+  } = summarizeTransactions(filteredAll);
 
   const hasActiveFilters =
     search.trim() !== '' ||
@@ -489,6 +492,14 @@ export function TransaccionesClient({
           </div>
         </div>
       </div>
+
+      {/* Integrity indicator: USD charges are excluded from the peso totals
+          above. Shown only when the filtered set actually contains USD rows. */}
+      {excludedUsdCount > 0 && (
+        <p className="-mt-3 text-xs text-gray-400">
+          {excludedUsdLabel(excludedUsdCount)}
+        </p>
+      )}
 
       {/* Toolbar */}
       <div className="flex flex-col md:flex-row md:flex-wrap md:items-center gap-3">
@@ -812,7 +823,7 @@ export function TransaccionesClient({
                               color: isPositive ? '#38a169' : '#1a202c',
                             }}
                           >
-                            {formatCLP(t.amount)}
+                            {formatMoney(t.amount, t.currency)}
                           </span>
                         </div>
                       </td>
@@ -894,6 +905,7 @@ export function TransaccionesClient({
         <DeleteConfirmDialog
           description={deletingTx.description}
           amount={deletingTx.amount}
+          currency={deletingTx.currency}
           onConfirm={handleDeleteConfirm}
           onCancel={handleDeleteCancel}
         />

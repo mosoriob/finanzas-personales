@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { formatCLP } from "@/lib/format";
+import { formatMoney } from "@/lib/currency";
 
 type DailyBar = {
   date: string; // ISO date string "YYYY-MM-DD"
@@ -23,6 +24,7 @@ type AccountWithStats = {
     date: string; // ISO string
     description: string;
     amount: number;
+    currency: string | null;
   }[];
 };
 
@@ -125,7 +127,7 @@ function DetailPanel({ account }: { account: AccountWithStats }) {
                   className="text-[13px] font-medium ml-4 shrink-0"
                   style={{ color: tx.amount >= 0 ? "#38a169" : undefined }}
                 >
-                  {formatCLP(tx.amount)}
+                  {formatMoney(tx.amount, tx.currency)}
                 </span>
               </div>
             ))}

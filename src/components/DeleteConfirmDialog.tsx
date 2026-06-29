@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect } from 'react';
-import { formatCLP } from '@/lib/format';
+import { formatMoney } from '@/lib/currency';
 
 interface DeleteConfirmDialogProps {
   description: string;
   amount: number;
+  currency?: string | null;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -13,6 +14,7 @@ interface DeleteConfirmDialogProps {
 export function DeleteConfirmDialog({
   description,
   amount,
+  currency,
   onConfirm,
   onCancel,
 }: DeleteConfirmDialogProps) {
@@ -43,7 +45,7 @@ export function DeleteConfirmDialog({
         </h2>
 
         <p className="text-sm text-gray-600">
-          &ldquo;{description}&rdquo; &mdash; {formatCLP(amount)}
+          &ldquo;{description}&rdquo; &mdash; {formatMoney(amount, currency)}
         </p>
 
         <p className="text-xs text-gray-400">

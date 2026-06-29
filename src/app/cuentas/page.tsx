@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { isCLP } from "@/lib/currency";
 import { AccountsClient } from "./AccountsClient";
 
 export const dynamic = "force-dynamic";
@@ -55,7 +56,8 @@ export default async function CuentasPage() {
     for (const tx of account.transactions) {
       if (tx.date >= monthStart && tx.date <= monthEnd) {
         monthlyCount++;
-        if (tx.amount < 0) {
+        // Peso-only: USD charges aren't summed into the peso expense figure.
+        if (tx.amount < 0 && isCLP(tx)) {
           monthlyExpenses += tx.amount;
         }
       }
@@ -73,7 +75,7 @@ export default async function CuentasPage() {
 
     // Accumulate spending (negative amounts) into daily buckets
     for (const tx of account.transactions) {
-      if (tx.amount < 0) {
+      if (tx.amount < 0 && isCLP(tx)) {
         const key = toISODateString(tx.date);
         if (dailyMap.has(key)) {
           dailyMap.set(key, (dailyMap.get(key) ?? 0) + Math.abs(tx.amount));
@@ -100,6 +102,7 @@ export default async function CuentasPage() {
         date: tx.date.toISOString(),
         description: tx.description,
         amount: tx.amount,
+        currency: tx.currency,
       })),
     };
   });

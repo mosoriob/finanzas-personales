@@ -1,6 +1,6 @@
 "use client";
 
-import { formatCLP } from "@/lib/format";
+import { formatMoney } from "@/lib/currency";
 import { FAMILIAR_SHORT_LABEL, type Familiar } from "@/lib/familiar";
 
 const MONTH_ES = [
@@ -28,6 +28,7 @@ type Transaction = {
   description: string;
   note: string | null;
   amount: number;
+  currency: string | null;
   familiar: Familiar | null;
   isReimbursed: boolean;
   account: { id: number; name: string };
@@ -95,7 +96,7 @@ export function TransactionCard({
               className="text-sm font-semibold tabular-nums"
               style={{ color: isPositive ? "#38a169" : "#1a202c" }}
             >
-              {formatCLP(t.amount)}
+              {formatMoney(t.amount, t.currency)}
             </p>
           </div>
         </div>

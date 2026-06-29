@@ -26,6 +26,7 @@ type TransactionRow = {
   description: string;
   note: string | null;
   amount: number;
+  currency: string | null;
   accountId: number;
   categoryId: number;
   familiar: Familiar | null;
@@ -178,6 +179,8 @@ export function CreateTransactionModal({
 
     const newRow: TransactionRow = {
       ...result.transaction,
+      // Manually-created transactions are always pesos (no USD entry path).
+      currency: null,
       account,
       category,
     };
