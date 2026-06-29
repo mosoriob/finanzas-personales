@@ -27,7 +27,7 @@ vi.mock('../actions', () => ({
 }));
 
 const account = { id: 1, name: 'BCI Crédito' };
-const category = { id: 1, name: 'Servicios', emoji: '📱' };
+const category = { id: 1, name: 'Servicios', emoji: '📱', excluded: false };
 
 function tx(over: Partial<{ id: number; amount: number; currency: string | null }>) {
   return {

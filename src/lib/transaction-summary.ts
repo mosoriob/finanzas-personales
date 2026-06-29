@@ -9,12 +9,14 @@
 
 import { isCLP } from "@/lib/currency";
 import { householdPendingTotals, type Familiar } from "@/lib/familiar";
+import { countsInStats } from "@/lib/stats-exclusion";
 
 type SummaryInput = {
   amount: number;
   currency?: string | null;
   familiar: Familiar | null;
   isReimbursed: boolean;
+  category: { excluded: boolean };
 };
 
 export type TransactionSummary = {
@@ -27,7 +29,10 @@ export type TransactionSummary = {
 export function summarizeTransactions(
   transactions: readonly SummaryInput[],
 ): TransactionSummary {
-  const pesoRows = transactions.filter((t) => isCLP(t));
+  // Excluded categories (e.g. internal movements) are invisible to every
+  // total, so drop them before any sum — including the excluded-USD count.
+  const counted = transactions.filter(countsInStats);
+  const pesoRows = counted.filter((t) => isCLP(t));
   const expenses = pesoRows
     .filter((t) => t.amount < 0)
     .reduce((acc, t) => acc + t.amount, 0);
@@ -35,7 +40,7 @@ export function summarizeTransactions(
     .filter((t) => t.amount > 0)
     .reduce((acc, t) => acc + t.amount, 0);
   const pendingByHousehold = householdPendingTotals(pesoRows);
-  const excludedUsdCount = transactions.length - pesoRows.length;
+  const excludedUsdCount = counted.length - pesoRows.length;
   return { expenses, income, pendingByHousehold, excludedUsdCount };
 }
 

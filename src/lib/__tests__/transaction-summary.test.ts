@@ -6,13 +6,15 @@ type Row = {
   currency?: string | null;
   familiar?: "VINA" | "MELIPILLA" | null;
   isReimbursed?: boolean;
+  excluded?: boolean;
 };
 
 function rows(...rs: Row[]) {
-  return rs.map((r) => ({
+  return rs.map(({ excluded = false, ...r }) => ({
     familiar: null,
     isReimbursed: false,
     currency: null,
+    category: { excluded },
     ...r,
   }));
 }
@@ -65,6 +67,46 @@ describe("summarizeTransactions", () => {
       ),
     );
     expect(pendingByHousehold.VINA).toBe(1000);
+  });
+
+  it("excludes rows whose category is excluded from the expense total", () => {
+    const { expenses } = summarizeTransactions(
+      rows(
+        { amount: -45230 },
+        { amount: -7813060, excluded: true },
+      ),
+    );
+    expect(expenses).toBe(-45230);
+  });
+
+  it("excludes rows whose category is excluded from the income total", () => {
+    const { income } = summarizeTransactions(
+      rows(
+        { amount: 100000 },
+        { amount: 7813060, excluded: true },
+      ),
+    );
+    expect(income).toBe(100000);
+  });
+
+  it("excludes rows whose category is excluded from the per-household pending totals", () => {
+    const { pendingByHousehold } = summarizeTransactions(
+      rows(
+        { amount: -1000, familiar: "VINA" },
+        { amount: -5000, familiar: "VINA", excluded: true },
+      ),
+    );
+    expect(pendingByHousehold.VINA).toBe(1000);
+  });
+
+  it("does not count an excluded USD row as an excluded-USD charge", () => {
+    const { excludedUsdCount } = summarizeTransactions(
+      rows(
+        { amount: -45230 },
+        { amount: -119, currency: "USD", excluded: true },
+      ),
+    );
+    expect(excludedUsdCount).toBe(0);
   });
 });
 

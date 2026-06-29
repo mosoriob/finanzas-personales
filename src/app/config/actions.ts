@@ -98,6 +98,19 @@ export async function updateCategory(
   return { ok: true };
 }
 
+/** Flip whether a category is excluded from every statistic (donut, totals,
+ * net, per-household — all currencies). Rows stay visible in the list. */
+export async function toggleCategoryExclusion(id: number) {
+  const category = await prisma.category.findUniqueOrThrow({ where: { id } });
+  await prisma.category.update({
+    where: { id },
+    data: { excluded: !category.excluded },
+  });
+  revalidatePath("/config");
+  revalidatePath("/");
+  revalidatePath("/transacciones");
+}
+
 export type DeleteCategoryResult =
   | { ok: true }
   | { ok: false; error: string };

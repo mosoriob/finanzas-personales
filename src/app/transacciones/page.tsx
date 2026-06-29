@@ -52,7 +52,12 @@ export default async function TransaccionesPage({
     familiar: isFamiliar(t.familiar) ? t.familiar : null,
     isReimbursed: t.isReimbursed,
     account: { id: t.account.id, name: t.account.name },
-    category: { id: t.category.id, name: t.category.name, emoji: t.category.emoji },
+    category: {
+      id: t.category.id,
+      name: t.category.name,
+      emoji: t.category.emoji,
+      excluded: t.category.excluded,
+    },
   }));
 
   const serializedAccounts = accounts.map((a) => ({ id: a.id, name: a.name }));
@@ -60,6 +65,7 @@ export default async function TransaccionesPage({
     id: c.id,
     name: c.name,
     emoji: c.emoji,
+    excluded: c.excluded,
   }));
 
   return (

@@ -13,6 +13,7 @@ vi.mock("@/lib/db", () => ({
       findMany: vi.fn(),
       update: vi.fn(),
       findUnique: vi.fn(),
+      findUniqueOrThrow: vi.fn(),
       delete: vi.fn(),
     },
     transaction: {
@@ -36,6 +37,7 @@ vi.mock("@/lib/db", () => ({
 
 import {
   updateCategory,
+  toggleCategoryExclusion,
   deleteCategory,
   createRule,
   updateRule,
@@ -57,6 +59,7 @@ const mockPrisma = prisma as unknown as {
     findMany: ReturnType<typeof vi.fn>;
     update: ReturnType<typeof vi.fn>;
     findUnique: ReturnType<typeof vi.fn>;
+    findUniqueOrThrow: ReturnType<typeof vi.fn>;
     delete: ReturnType<typeof vi.fn>;
   };
   transaction: {
@@ -133,6 +136,45 @@ describe("updateCategory", () => {
     expect(mockPrisma.category.findFirst).toHaveBeenCalledWith({
       where: { name: "Supermercado", NOT: { id: 1 } },
     });
+  });
+});
+
+// ─── toggleCategoryExclusion ───
+
+describe("toggleCategoryExclusion", () => {
+  it("flips an included category to excluded", async () => {
+    mockPrisma.category.findUniqueOrThrow.mockResolvedValue({ id: 1, excluded: false });
+    mockPrisma.category.update.mockResolvedValue({ id: 1, excluded: true });
+
+    await toggleCategoryExclusion(1);
+
+    expect(mockPrisma.category.update).toHaveBeenCalledWith({
+      where: { id: 1 },
+      data: { excluded: true },
+    });
+  });
+
+  it("flips an excluded category back to included", async () => {
+    mockPrisma.category.findUniqueOrThrow.mockResolvedValue({ id: 1, excluded: true });
+    mockPrisma.category.update.mockResolvedValue({ id: 1, excluded: false });
+
+    await toggleCategoryExclusion(1);
+
+    expect(mockPrisma.category.update).toHaveBeenCalledWith({
+      where: { id: 1 },
+      data: { excluded: false },
+    });
+  });
+
+  it("revalidates every surface that shows aggregates", async () => {
+    mockPrisma.category.findUniqueOrThrow.mockResolvedValue({ id: 1, excluded: false });
+    mockPrisma.category.update.mockResolvedValue({ id: 1, excluded: true });
+
+    await toggleCategoryExclusion(1);
+
+    expect(revalidatePath).toHaveBeenCalledWith("/config");
+    expect(revalidatePath).toHaveBeenCalledWith("/");
+    expect(revalidatePath).toHaveBeenCalledWith("/transacciones");
   });
 });
 
