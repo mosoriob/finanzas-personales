@@ -21,7 +21,7 @@
     "better-sqlite3": "^12.8.0",
     "dotenv": "^17.4.1",
     "next": "16.2.3",
-    "open-banking-chile": "github:mosoriob/open-banking-chile#5b46875d50b61d28436d7a870c93298d2454af9f",
+    "open-banking-chile": "github:mosoriob/open-banking-chile#ae51f7177f6fe47bd4b69a1436ed47698e170ff1",
     "prisma": "^6.19.3",
     "react": "19.2.4",
     "react-dom": "19.2.4",
