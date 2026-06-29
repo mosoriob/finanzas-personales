@@ -162,8 +162,9 @@ describe("sync route — currency threading", () => {
         },
       ],
     };
-    // Fake store keyed on the full where clause (currency included): only an
-    // exact currency match de-dupes, so the two same-amount rows are distinct.
+    // Fake store that de-dupes on amount + currency (the fields that differ
+    // between these two rows): with currency in the key, the same-amount USD
+    // and CLP charges stay distinct.
     const store: Array<{ amount: number; currency: "USD" | null }> = [];
     mockTxFindFirst.mockImplementation(async ({ where }) =>
       store.find((r) => r.amount === where.amount && r.currency === where.currency) ?? null
