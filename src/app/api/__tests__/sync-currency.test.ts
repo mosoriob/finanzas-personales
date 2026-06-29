@@ -124,6 +124,63 @@ describe("sync route — currency threading", () => {
     expect(mockTxFindFirst.mock.calls[0][0].where).toMatchObject({ currency: "USD" });
   });
 
+  it("re-importing the same USD charge does not create a duplicate", async () => {
+    scrapeResult = {
+      success: true,
+      bank: "BCI",
+      creditCards: [
+        {
+          label: "Tarjeta",
+          movements: [
+            { date: "15-06-2026", description: "ANTHROPIC CLAUDE", amount: -119, currency: "USD" },
+          ],
+        },
+      ],
+    };
+    // The currency-augmented de-dup lookup already finds the prior USD row.
+    mockTxFindFirst.mockResolvedValue({ id: 99, currency: "USD" });
+
+    const res = await POST(makeRequest());
+    const body = await res.json();
+
+    expect(mockTxCreate).not.toHaveBeenCalled();
+    expect(body.skipped).toBe(1);
+    expect(body.imported).toBe(0);
+  });
+
+  it("treats a USD charge and a same-amount CLP charge as distinct", async () => {
+    scrapeResult = {
+      success: true,
+      bank: "BCI",
+      creditCards: [
+        {
+          label: "Tarjeta",
+          movements: [
+            { date: "15-06-2026", description: "ANTHROPIC CLAUDE", amount: -119, currency: "USD" },
+            { date: "15-06-2026", description: "ANTHROPIC CLAUDE", amount: -119, currency: "CLP" },
+          ],
+        },
+      ],
+    };
+    // Fake store keyed on the full where clause (currency included): only an
+    // exact currency match de-dupes, so the two same-amount rows are distinct.
+    const store: Array<{ amount: number; currency: "USD" | null }> = [];
+    mockTxFindFirst.mockImplementation(async ({ where }) =>
+      store.find((r) => r.amount === where.amount && r.currency === where.currency) ?? null
+    );
+    mockTxCreate.mockImplementation(async ({ data }) => {
+      store.push({ amount: data.amount, currency: data.currency });
+      return { id: store.length };
+    });
+
+    const res = await POST(makeRequest());
+    const body = await res.json();
+
+    expect(body.imported).toBe(2);
+    expect(body.skipped).toBe(0);
+    expect(mockTxCreate.mock.calls.map((c) => c[0].data.currency)).toEqual(["USD", null]);
+  });
+
   it("persists a peso movement with currency null (absent marker)", async () => {
     scrapeResult = {
       success: true,
