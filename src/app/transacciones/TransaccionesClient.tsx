@@ -7,13 +7,13 @@ import {
   useTransition,
   useEffect,
   useRef,
-  useCallback,
 } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { formatCLP } from '@/lib/format';
 import { CategoryPicker } from '@/components/CategoryPicker';
 import { MonthPicker } from '@/components/MonthPicker';
 import { Pagination } from '@/components/Pagination';
+import { filterAndPaginate } from '@/lib/transaction-filters';
 import {
   updateTransactionCategory,
   updateFamiliar,
@@ -28,7 +28,6 @@ import {
   HOUSEHOLD_FILTER_OPTIONS,
   familiarToDropdownValue,
   dropdownValueToFamiliar,
-  matchesHouseholdFilter,
   householdFilterLabel,
   householdPendingTotals,
   FAMILIAR_SHORT_LABEL,
@@ -139,23 +138,18 @@ interface Props {
   transactions: Transaction[];
   accounts: Account[];
   categories: Category[];
-  totalCount: number;
-  currentPage: number;
-  pageSize: number;
   mes: string; // "YYYY-MM" | "todo"
 }
+
+const PAGE_SIZE = 50;
 
 export function TransaccionesClient({
   transactions,
   accounts,
   categories,
-  totalCount,
-  currentPage,
-  pageSize,
   mes,
 }: Props) {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [, startCategoryTransition] = useTransition();
   const [, startSharedTransition] = useTransition();
   const [, startNoteTransition] = useTransition();
@@ -167,6 +161,7 @@ export function TransaccionesClient({
   const [categoryFilter, setCategoryFilter] = useState<string>('todas');
   const [householdFilter, setHouseholdFilter] =
     useState<HouseholdFilter>('todos');
+  const [page, setPage] = useState(1);
   const [openPickerForTxId, setOpenPickerForTxId] = useState<number | null>(
     null,
   );
@@ -179,22 +174,6 @@ export function TransaccionesClient({
   const [deletingTx, setDeletingTx] = useState<Transaction | null>(null);
 
   const [showCreateModal, setShowCreateModal] = useState(false);
-
-  // Mobile infinite scroll state
-  const [mobileItems, setMobileItems] = useState<Transaction[]>(transactions);
-  const [mobileLoading, setMobileLoading] = useState(false);
-  const [mobileHasMore, setMobileHasMore] = useState(
-    transactions.length < totalCount,
-  );
-  const [mobilePage, setMobilePage] = useState(currentPage);
-  const sentinelRef = useRef<HTMLDivElement>(null);
-
-  // Reset mobile items when server-side props change (month/filter change)
-  useEffect(() => {
-    setMobileItems(transactions);
-    setMobilePage(currentPage);
-    setMobileHasMore(transactions.length < totalCount);
-  }, [transactions, totalCount, currentPage]);
 
   const [optimisticTransactions, applyOptimistic] = useOptimistic(
     transactions,
@@ -231,31 +210,24 @@ export function TransaccionesClient({
     return () => clearTimeout(timer);
   }, [toast]);
 
-  // Reset to page 1 when local filters change
-  function resetPage() {
-    const params = new URLSearchParams(searchParams.toString());
-    params.delete('pagina');
-    router.push(`?${params.toString()}`);
-  }
-
   function handleSearchChange(value: string) {
     setSearch(value);
-    resetPage();
+    setPage(1);
   }
 
   function handleAccountFilterChange(value: string) {
     setAccountFilter(value);
-    resetPage();
+    setPage(1);
   }
 
   function handleCategoryFilterChange(value: string) {
     setCategoryFilter(value);
-    resetPage();
+    setPage(1);
   }
 
   function handleHouseholdFilterChange(value: HouseholdFilter) {
     setHouseholdFilter(value);
-    resetPage();
+    setPage(1);
   }
 
   function handleSelect(txId: number, newCategoryId: number) {
@@ -386,106 +358,55 @@ export function TransaccionesClient({
     });
   }
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return optimisticTransactions.filter((t) => {
-      if (q) {
-        const matchesDesc = t.description.toLowerCase().includes(q);
-        const matchesAccount = t.account.name.toLowerCase().includes(q);
-        const matchesNote = t.note?.toLowerCase().includes(q) ?? false;
-        if (!matchesDesc && !matchesAccount && !matchesNote) return false;
-      }
-      if (accountFilter !== 'todas' && t.account.name !== accountFilter)
-        return false;
-      if (categoryFilter !== 'todas' && t.category.name !== categoryFilter)
-        return false;
-      if (!matchesHouseholdFilter(t.familiar, householdFilter)) return false;
-      return true;
-    });
-  }, [
-    optimisticTransactions,
-    search,
-    accountFilter,
-    categoryFilter,
-    householdFilter,
-  ]);
+  // Filter the full in-memory set, then paginate the result so counts and
+  // page sizes reflect the filtered set (not the raw month).
+  const filtered = useMemo(
+    () =>
+      filterAndPaginate(
+        optimisticTransactions,
+        { search, accountFilter, categoryFilter, householdFilter },
+        page,
+        PAGE_SIZE,
+      ),
+    [
+      optimisticTransactions,
+      search,
+      accountFilter,
+      categoryFilter,
+      householdFilter,
+      page,
+    ],
+  );
+  const pageItems = filtered.pageItems;
+  const filteredCount = filtered.filteredCount;
+  // The helper clamps the slice internally; clamp the displayed page too so the
+  // pager highlights a valid page when the filtered set shrinks.
+  const currentPage = Math.min(page, filtered.totalPages);
 
-  // Summary bar: use filtered view within this page, but totalCount from server
-  // for the transaction count card (reflects full filtered month, not just this page).
-  const summaryExpenses = filtered
+  // Summary bar reflects the whole filtered set, not just the current page.
+  const filteredAll = useMemo(
+    () =>
+      filterAndPaginate(
+        optimisticTransactions,
+        { search, accountFilter, categoryFilter, householdFilter },
+        1,
+        Number.MAX_SAFE_INTEGER,
+      ).pageItems,
+    [optimisticTransactions, search, accountFilter, categoryFilter, householdFilter],
+  );
+  const summaryExpenses = filteredAll
     .filter((t) => t.amount < 0)
     .reduce((acc, t) => acc + t.amount, 0);
-  const summaryIncome = filtered
+  const summaryIncome = filteredAll
     .filter((t) => t.amount > 0)
     .reduce((acc, t) => acc + t.amount, 0);
-  const pendingByHousehold = householdPendingTotals(filtered);
+  const pendingByHousehold = householdPendingTotals(filteredAll);
 
   const hasActiveFilters =
     search.trim() !== '' ||
     accountFilter !== 'todas' ||
     categoryFilter !== 'todas' ||
     householdFilter !== 'todos';
-
-  // Mobile infinite scroll: load next page
-  const loadMoreMobile = useCallback(async () => {
-    if (mobileLoading || !mobileHasMore) return;
-    setMobileLoading(true);
-    try {
-      const nextPage = mobilePage + 1;
-      const params = new URLSearchParams(searchParams.toString());
-      params.set('pagina', String(nextPage));
-      const res = await fetch(`/api/transacciones?${params.toString()}`);
-      if (res.ok) {
-        const data = await res.json();
-        setMobileItems((prev) => [...prev, ...data.transactions]);
-        setMobilePage(nextPage);
-        setMobileHasMore(
-          data.transactions.length > 0 &&
-            mobileItems.length + data.transactions.length < totalCount,
-        );
-      }
-    } catch (err) {
-      console.error('Error cargando más transacciones:', err);
-    } finally {
-      setMobileLoading(false);
-    }
-  }, [mobileLoading, mobileHasMore, mobilePage, mobileItems.length, totalCount, searchParams]);
-
-  // Intersection observer for infinite scroll sentinel
-  useEffect(() => {
-    const sentinel = sentinelRef.current;
-    if (!sentinel) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting) {
-          loadMoreMobile();
-        }
-      },
-      { rootMargin: '200px' },
-    );
-
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [loadMoreMobile]);
-
-  const mobileFiltered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return mobileItems.filter((t) => {
-      if (q) {
-        const matchesDesc = t.description.toLowerCase().includes(q);
-        const matchesAccount = t.account.name.toLowerCase().includes(q);
-        const matchesNote = t.note?.toLowerCase().includes(q) ?? false;
-        if (!matchesDesc && !matchesAccount && !matchesNote) return false;
-      }
-      if (accountFilter !== 'todas' && t.account.name !== accountFilter)
-        return false;
-      if (categoryFilter !== 'todas' && t.category.name !== categoryFilter)
-        return false;
-      if (!matchesHouseholdFilter(t.familiar, householdFilter)) return false;
-      return true;
-    });
-  }, [mobileItems, search, accountFilter, categoryFilter, householdFilter]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -528,7 +449,7 @@ export function TransaccionesClient({
             Transacciones
           </p>
           <p className="text-2xl md:text-3xl font-semibold text-gray-800">
-            {totalCount}
+            {filteredCount}
           </p>
         </div>
         <div className="bg-[#f9f9f9] rounded-[20px] p-4 md:p-7">
@@ -709,7 +630,7 @@ export function TransaccionesClient({
 
       {/* Transaction table — desktop only */}
       <div className="hidden md:block bg-[#f9f9f9] rounded-[20px] p-7">
-        {filtered.length === 0 ? (
+        {pageItems.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-400">
             <span className="text-4xl">🔍</span>
             <p className="text-sm font-medium">
@@ -755,7 +676,7 @@ export function TransaccionesClient({
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((t) => {
+                {pageItems.map((t) => {
                   const emoji =
                     CATEGORY_EMOJI[t.category.name] ?? t.category.emoji ?? '📌';
                   const isPositive = t.amount >= 0;
@@ -904,8 +825,9 @@ export function TransaccionesClient({
             {/* Desktop pagination */}
             <Pagination
               currentPage={currentPage}
-              totalCount={totalCount}
-              pageSize={pageSize}
+              totalCount={filteredCount}
+              pageSize={PAGE_SIZE}
+              onPageChange={setPage}
             />
           </>
         )}
@@ -913,7 +835,7 @@ export function TransaccionesClient({
 
       {/* Transaction cards — mobile only */}
       <div className="md:hidden bg-[#f9f9f9] rounded-[20px] p-4">
-        {mobileFiltered.length === 0 ? (
+        {pageItems.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-400">
             <span className="text-4xl">🔍</span>
             <p className="text-sm font-medium">
@@ -935,7 +857,7 @@ export function TransaccionesClient({
           </div>
         ) : (
           <div>
-            {mobileFiltered.map((t) => (
+            {pageItems.map((t) => (
               <TransactionCard
                 key={t.id}
                 transaction={t}
@@ -944,7 +866,7 @@ export function TransaccionesClient({
               />
             ))}
             {/* Category pickers for mobile */}
-            {mobileFiltered.map((t) =>
+            {pageItems.map((t) =>
               openPickerForTxId === t.id ? (
                 <div key={`picker-${t.id}`} className="relative">
                   <CategoryPicker
@@ -958,18 +880,12 @@ export function TransaccionesClient({
                 </div>
               ) : null,
             )}
-            {/* Infinite scroll sentinel */}
-            <div ref={sentinelRef} className="h-4" />
-            {mobileLoading && (
-              <div className="flex justify-center py-4">
-                <p className="text-sm text-gray-400">Cargando más...</p>
-              </div>
-            )}
-            {!mobileHasMore && mobileFiltered.length > 0 && (
-              <p className="text-xs text-gray-300 text-center py-3">
-                — Fin de la lista —
-              </p>
-            )}
+            <Pagination
+              currentPage={currentPage}
+              totalCount={filteredCount}
+              pageSize={PAGE_SIZE}
+              onPageChange={setPage}
+            />
           </div>
         )}
       </div>

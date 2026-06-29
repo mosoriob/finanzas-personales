@@ -1,24 +1,17 @@
 import { prisma } from "@/lib/db";
 import { TransaccionesClient } from "./TransaccionesClient";
-import {
-  parseMesParam,
-  getDateFilterForMonth,
-  parsePageParam,
-} from "@/lib/month-utils";
+import { parseMesParam, getDateFilterForMonth } from "@/lib/month-utils";
 import { isFamiliar } from "@/lib/familiar";
 
 export const dynamic = "force-dynamic";
 
-const PAGE_SIZE = 50;
-
 export default async function TransaccionesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ mes?: string; pagina?: string }>;
+  searchParams: Promise<{ mes?: string }>;
 }) {
   const params = await searchParams;
   const mesParam = params.mes;
-  const pagina = parsePageParam(params.pagina);
 
   const dateInfo = parseMesParam(mesParam);
   const dateFilter = getDateFilterForMonth(dateInfo);
@@ -35,7 +28,7 @@ export default async function TransaccionesPage({
     ...(dateFilter ? { date: dateFilter } : {}),
   };
 
-  const [transactions, totalCount, accounts, categories] = await Promise.all([
+  const [transactions, accounts, categories] = await Promise.all([
     prisma.transaction.findMany({
       where: whereFilter,
       include: {
@@ -43,11 +36,6 @@ export default async function TransaccionesPage({
         category: true,
       },
       orderBy: { date: "desc" },
-      skip: (pagina - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
-    }),
-    prisma.transaction.count({
-      where: whereFilter,
     }),
     prisma.account.findMany({ where: { hidden: false }, orderBy: { name: "asc" } }),
     prisma.category.findMany({ orderBy: { name: "asc" } }),
@@ -85,9 +73,6 @@ export default async function TransaccionesPage({
         transactions={serializedTransactions}
         accounts={serializedAccounts}
         categories={serializedCategories}
-        totalCount={totalCount}
-        currentPage={pagina}
-        pageSize={PAGE_SIZE}
         mes={effectiveMes}
       />
     </div>
