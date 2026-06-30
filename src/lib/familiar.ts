@@ -1,34 +1,41 @@
 /**
  * Per-household classification for transactions.
  *
- * A transaction belongs to one of three states:
+ * A transaction belongs to one of these states:
  *   - Personal (null)       — not a family movement (the default)
  *   - "VINA"                — Viña household (Pamela y Max)
  *   - "MELIPILLA"           — Melipilla household (Padres)
+ *   - "ANDESPATH"           — AndesPath reimbursement (work expenses to be repaid)
  *
  * Stored on Transaction.familiar as a nullable text column (SQLite has no
  * native Prisma enums). The allowed values are enforced in the app layer
  * via the union below.
  */
 
-export type Familiar = "VINA" | "MELIPILLA";
+export type Familiar = "VINA" | "MELIPILLA" | "ANDESPATH";
 
-export const FAMILIAR_VALUES: readonly Familiar[] = ["VINA", "MELIPILLA"] as const;
+export const FAMILIAR_VALUES: readonly Familiar[] = [
+  "VINA",
+  "MELIPILLA",
+  "ANDESPATH",
+] as const;
 
 export function isFamiliar(value: unknown): value is Familiar {
-  return value === "VINA" || value === "MELIPILLA";
+  return value === "VINA" || value === "MELIPILLA" || value === "ANDESPATH";
 }
 
 /** Long labels — used by the transactions dropdown and the household filter. */
 export const FAMILIAR_LONG_LABEL: Record<Familiar, string> = {
   VINA: "Viña (Pamela y Max)",
   MELIPILLA: "Melipilla (Padres)",
+  ANDESPATH: "AndesPath (Reembolso)",
 };
 
 /** Short labels — used by the mobile card badge and the active-filter pill. */
 export const FAMILIAR_SHORT_LABEL: Record<Familiar, string> = {
   VINA: "🏠 Viña",
   MELIPILLA: "👴 Melipilla",
+  ANDESPATH: "💼 AndesPath",
 };
 
 export const PERSONAL_LABEL = "Personal";
@@ -108,7 +115,11 @@ export function householdPendingTotals(
     amount: number;
   }[],
 ): Record<Familiar, number> {
-  const totals: Record<Familiar, number> = { VINA: 0, MELIPILLA: 0 };
+  const totals: Record<Familiar, number> = {
+    VINA: 0,
+    MELIPILLA: 0,
+    ANDESPATH: 0,
+  };
   for (const t of transactions) {
     if (t.familiar === null || t.isReimbursed || t.amount >= 0) continue;
     totals[t.familiar] += Math.abs(t.amount);
