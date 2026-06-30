@@ -16,11 +16,23 @@ import {
   type HouseholdFilter,
 } from "@/lib/familiar";
 
-export type GastoRow = {
+/** A single transaction, carrying every field TransactionCard renders. */
+export type GastoTransaction = {
+  id: number;
+  date: string; // ISO string (Prisma Date serialized in the page)
+  description: string;
+  note: string | null;
   amount: number; // negative (expense), native units
-  isCLP: boolean;
+  currency: string | null;
   familiar: Familiar | null;
+  isReimbursed: boolean;
+  account: { id: number; name: string };
   category: { id: number; name: string; emoji: string };
+};
+
+/** A transaction plus the derived peso flag the breakdown filters on. */
+export type GastoRow = GastoTransaction & {
+  isCLP: boolean;
 };
 
 export type CategoryAggregate = {
@@ -29,6 +41,8 @@ export type CategoryAggregate = {
   emoji: string;
   total: number; // positive CLP magnitude
   count: number;
+  /** The CLP rows behind this category, largest magnitude first. */
+  transactions: GastoTransaction[];
 };
 
 export type GastosBreakdown = {
@@ -62,10 +76,16 @@ export function buildGastosBreakdown(
         emoji: r.category.emoji,
         total: 0,
         count: 0,
+        transactions: [],
       };
     prev.total += Math.abs(r.amount);
     prev.count += 1;
+    prev.transactions.push(r);
     byId.set(r.category.id, prev);
+  }
+
+  for (const c of byId.values()) {
+    c.transactions.sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
   }
 
   const categories = Array.from(byId.values()).sort(

@@ -32,15 +32,28 @@ export default async function GastosPage({
       ...(dateFilter ? { date: dateFilter } : {}),
     },
     select: {
+      id: true,
+      date: true,
+      description: true,
+      note: true,
       amount: true,
       currency: true,
       familiar: true,
+      isReimbursed: true,
+      account: { select: { id: true, name: true } },
       category: { select: { id: true, name: true, emoji: true } },
     },
   });
 
   const rows: GastoRow[] = transactions.map((t) => ({
+    id: t.id,
+    date: t.date.toISOString(),
+    description: t.description,
+    note: t.note,
     amount: t.amount,
+    currency: t.currency,
+    isReimbursed: t.isReimbursed,
+    account: t.account,
     isCLP: isCLP(t),
     familiar: isFamiliar(t.familiar) ? t.familiar : null,
     category: t.category,

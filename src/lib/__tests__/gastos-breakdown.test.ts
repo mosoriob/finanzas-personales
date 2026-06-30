@@ -15,15 +15,27 @@ type Row = {
   emoji?: string;
   isCLP?: boolean;
   familiar?: Familiar | null;
+  description?: string;
 };
 
+let nextTxId = 1;
+
 function rows(...rs: Row[]): GastoRow[] {
-  return rs.map(({ name, emoji = "📌", isCLP = true, familiar = null, amount }) => ({
-    amount,
-    isCLP,
-    familiar,
-    category: { id: catId(name), name, emoji },
-  }));
+  return rs.map(
+    ({ name, emoji = "📌", isCLP = true, familiar = null, amount, description }) => ({
+      id: nextTxId++,
+      date: "2026-06-01T00:00:00.000Z",
+      description: description ?? name,
+      note: null,
+      amount,
+      currency: isCLP ? "CLP" : "USD",
+      isReimbursed: false,
+      account: { id: 1, name: "Cuenta" },
+      isCLP,
+      familiar,
+      category: { id: catId(name), name, emoji },
+    }),
+  );
 }
 
 const NONE = new Set<number>();
@@ -101,6 +113,39 @@ describe("buildGastosBreakdown", () => {
     expect(categories.map((c) => c.name)).toEqual(["Supermercado"]);
     expect(visibleTotal).toBe(1000);
     expect(usdCount).toBe(2);
+  });
+
+  it("attaches the category's CLP transactions, largest magnitude first", () => {
+    const { categories } = buildGastosBreakdown(
+      rows(
+        { amount: -500, name: "Supermercado", description: "Lider" },
+        { amount: -3000, name: "Supermercado", description: "Jumbo" },
+        { amount: -1000, name: "Supermercado", description: "Unimarc" },
+      ),
+      "todos",
+      NONE,
+    );
+    const market = categories[0];
+    expect(market.count).toBe(market.transactions.length);
+    expect(market.transactions.map((t) => t.description)).toEqual([
+      "Jumbo",
+      "Unimarc",
+      "Lider",
+    ]);
+  });
+
+  it("excludes USD rows from a category's attached transactions", () => {
+    const { categories } = buildGastosBreakdown(
+      rows(
+        { amount: -1000, name: "Viajes", description: "Hotel CLP" },
+        { amount: -200, name: "Viajes", description: "Hotel USD", isCLP: false },
+      ),
+      "todos",
+      NONE,
+    );
+    const viajes = categories[0];
+    expect(viajes.count).toBe(1);
+    expect(viajes.transactions.map((t) => t.description)).toEqual(["Hotel CLP"]);
   });
 
   it("returns empty results when nothing is in scope", () => {

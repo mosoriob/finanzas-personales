@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { MonthPicker } from "@/components/MonthPicker";
+import { TransactionCard } from "@/components/transaction-card";
 import { formatCLP } from "@/lib/format";
 import { formatMonthLabel } from "@/lib/month-utils";
 import { buildGastosBreakdown, type GastoRow } from "@/lib/gastos-breakdown";
@@ -33,6 +34,7 @@ export function GastosClient({ rows, mes }: Props) {
   const [householdFilter, setHouseholdFilter] =
     useState<HouseholdFilter>("todos");
   const [offIds, setOffIds] = useState<Set<number>>(() => new Set());
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(() => new Set());
   const [hydrated, setHydrated] = useState(false);
 
   // Load the persisted view state once, after the SSR default render — reading
@@ -86,6 +88,15 @@ export function GastosClient({ rows, mes }: Props) {
 
   function toggle(id: number) {
     setOffIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleExpand(id: number) {
+    setExpandedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -183,53 +194,96 @@ export function GastosClient({ rows, mes }: Props) {
           <div className="flex flex-col">
             {categories.map((c) => {
               const off = offIds.has(c.id);
+              const expanded = expandedIds.has(c.id);
               const pct =
                 !off && visibleTotal > 0 ? (c.total / visibleTotal) * 100 : 0;
               return (
                 <div
                   key={c.id}
-                  className={`flex items-center gap-3 py-3 border-b border-gray-100 last:border-0 transition-opacity ${
+                  className={`border-b border-gray-100 last:border-0 transition-opacity ${
                     off ? "opacity-40" : ""
                   }`}
                 >
+                  {/* Category row — click anywhere (except the toggle) to expand */}
                   <div
-                    className="w-9 h-9 rounded-xl flex items-center justify-center text-lg flex-shrink-0"
-                    style={{ background: "#ede9fe" }}
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={expanded}
+                    onClick={() => toggleExpand(c.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        toggleExpand(c.id);
+                      }
+                    }}
+                    className="flex items-center gap-3 py-3 cursor-pointer"
                   >
-                    {c.emoji}
-                  </div>
-
-                  <div className="flex flex-col min-w-0 flex-1">
-                    <span className="text-sm font-medium text-gray-800 truncate">
-                      {c.name}
-                    </span>
-                    <span className="text-[11px] text-gray-400">
-                      {c.count} transacci{c.count !== 1 ? "ones" : "ón"}
-                      {!off && ` · ${pct.toFixed(0)}%`}
-                    </span>
-                  </div>
-
-                  <span className="text-sm font-semibold text-gray-800 tabular-nums flex-shrink-0">
-                    {formatCLP(c.total)}
-                  </span>
-
-                  {/* Toggle switch */}
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={!off}
-                    aria-label={`${off ? "Incluir" : "Quitar"} ${c.name}`}
-                    onClick={() => toggle(c.id)}
-                    className={`relative w-10 h-6 rounded-full transition-colors flex-shrink-0 ${
-                      off ? "bg-gray-200" : "bg-violet-500"
-                    }`}
-                  >
-                    <span
-                      className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
-                        off ? "" : "translate-x-4"
+                    <svg
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                      aria-hidden="true"
+                      className={`w-4 h-4 text-gray-300 flex-shrink-0 transition-transform ${
+                        expanded ? "rotate-90" : ""
                       }`}
-                    />
-                  </button>
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+
+                    <div
+                      className="w-9 h-9 rounded-xl flex items-center justify-center text-lg flex-shrink-0"
+                      style={{ background: "#ede9fe" }}
+                    >
+                      {c.emoji}
+                    </div>
+
+                    <div className="flex flex-col min-w-0 flex-1">
+                      <span className="text-sm font-medium text-gray-800 truncate">
+                        {c.name}
+                      </span>
+                      <span className="text-[11px] text-gray-400">
+                        {c.count} transacci{c.count !== 1 ? "ones" : "ón"}
+                        {!off && ` · ${pct.toFixed(0)}%`}
+                      </span>
+                    </div>
+
+                    <span className="text-sm font-semibold text-gray-800 tabular-nums flex-shrink-0">
+                      {formatCLP(c.total)}
+                    </span>
+
+                    {/* Toggle switch — its own target, must not trigger expand */}
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={!off}
+                      aria-label={`${off ? "Incluir" : "Quitar"} ${c.name}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggle(c.id);
+                      }}
+                      className={`relative w-10 h-6 rounded-full transition-colors flex-shrink-0 ${
+                        off ? "bg-gray-200" : "bg-violet-500"
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${
+                          off ? "" : "translate-x-4"
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {/* Expanded transactions — CLP only, largest first */}
+                  {expanded && (
+                    <div className="pl-7 pb-2">
+                      {c.transactions.map((t) => (
+                        <TransactionCard key={t.id} transaction={t} />
+                      ))}
+                    </div>
+                  )}
                 </div>
               );
             })}
