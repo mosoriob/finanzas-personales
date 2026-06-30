@@ -1,0 +1,13 @@
+{
+  "_comment": "Categorías nuevas propuestas a partir del análisis de transacciones 'Otro' en dev-5.db. Revísalas; los ids son sugeridos (siguiente disponible tras id 32). El emoji sigue la convención de la tabla Category.",
+  "generatedAt": "2026-06-29",
+  "newCategories": [
+    {
+      "suggestedId": 33,
+      "name": "Inversiones",
+      "emoji": "📈",
+      "reasoning": "Aportes a Fintual (Administradora General de Fondos, regulada por la CMF) y otros vehículos de inversión. Hoy caen en 'Otro' o se confundirían con 'Transferencia'. Justifica categoría propia: es ahorro/inversión, no gasto ni transferencia entre cuentas propias.",
+      "matchingTransactions": ["Traspaso A:Fintual agf sa (-2.000.000)"]
+    }
+  ]
+}

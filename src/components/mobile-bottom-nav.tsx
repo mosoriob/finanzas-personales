@@ -14,6 +14,15 @@ function IconDashboard({ className }: { className?: string }) {
   );
 }
 
+function IconChart({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 3v18h18" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M7 14l3-3 3 3 4-5" />
+    </svg>
+  );
+}
+
 function IconTransactions({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.75}>
@@ -43,6 +52,7 @@ function IconSettings({ className }: { className?: string }) {
 
 const tabs = [
   { name: "Dashboard", href: "/", Icon: IconDashboard },
+  { name: "Gastos", href: "/gastos", Icon: IconChart },
   { name: "Transacciones", href: "/transacciones", Icon: IconTransactions },
   { name: "Cuentas", href: "/cuentas", Icon: IconWallet },
   { name: "Configuración", href: "/config", Icon: IconSettings },

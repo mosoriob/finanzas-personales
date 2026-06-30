@@ -1,0 +1,97 @@
+{
+  "_comment": "Reglas sugeridas a partir de las 203 transacciones con categoría 'Otro' en dev-5.db. Semántica de match (ver src/lib/rules.ts): substring case-insensitive; gana el match más largo; empate -> menor id. OJO: é != e para el motor, por eso hay variantes con/sin tilde. 'confidence' y 'reasoning' son para tu revisión; no se persisten. categoryId se refiere a la tabla Category actual; 'Inversiones' es nueva (ver categories-suggested.json).",
+  "generatedAt": "2026-06-29",
+  "matchSemantics": "case-insensitive substring; longest match wins; tie -> lowest id",
+  "rules": [
+    { "match": "Apple.com", "category": "Suscripciones", "categoryId": 17, "confidence": "medium", "count": 6, "reasoning": "Cargos Apple (App Store / iCloud / suscripciones). Cubre 'Apple.com cl apple' y 'Apple.com/bill'. Si compras apps/juegos podría ser Entretenimiento." },
+    { "match": "Anthropic", "category": "Suscripciones", "categoryId": 17, "confidence": "high", "count": 1, "reasoning": "Anthropic / Claude (suscripción IA)." },
+    { "match": "Claude.ai", "category": "Suscripciones", "categoryId": 17, "confidence": "high", "count": 1, "reasoning": "Suscripción Claude.ai." },
+    { "match": "paramountplus", "category": "Streaming", "categoryId": 25, "confidence": "high", "count": 1, "reasoning": "Paramount+ (confirmado en Gmail: 'Pagaste tu suscripción a Paramount+'). Cubre 'Mp*paramountplus'." },
+    { "match": "Decathlon", "category": "Deporte", "categoryId": 19, "confidence": "high", "count": 3, "reasoning": "Tienda artículos deportivos." },
+    { "match": "Parque deportivo", "category": "Deporte", "categoryId": 19, "confidence": "high", "count": 1, "reasoning": "Recinto deportivo." },
+    { "match": "grylan", "category": "Deporte", "categoryId": 19, "confidence": "medium", "count": 2, "reasoning": "Gmail: 'Compra en Salomon CH Grylan SA'. Salomon = outdoor/running. Alternativa: Ropa y Calzado." },
+    { "match": "Aramco", "category": "Transporte", "categoryId": 2, "confidence": "high", "count": 1, "reasoning": "Estación de servicio (ex-Petrobras/Esmax). Combustible." },
+    { "match": "Gasco", "category": "Servicios Básicos", "categoryId": 16, "confidence": "high", "count": 1, "reasoning": "Gas domiciliario." },
+    { "match": "Telefonica", "category": "Servicios", "categoryId": 6, "confidence": "high", "count": 1, "reasoning": "Telefónica/Movistar." },
+    { "match": "Servipag", "category": "Servicios", "categoryId": 6, "confidence": "medium", "count": 4, "reasoning": "Servipag = pago de cuentas/servicios. Cubre 'Compra con App Bci Servipag' y 'Pago En Servipag.com'. Podría ser Servicios Básicos según qué cuenta pagues." },
+    { "match": "e-certchile", "category": "Servicios", "categoryId": 6, "confidence": "high", "count": 2, "reasoning": "Certificado de firma electrónica (filial CCS). Trámite/servicio. Cubre 'Flow *e-certchile'." },
+    { "match": "Sii.cl", "category": "Impuestos", "categoryId": 22, "confidence": "high", "count": 1, "reasoning": "Servicio de Impuestos Internos." },
+    { "match": "Municipalidad", "category": "Impuestos", "categoryId": 22, "confidence": "medium", "count": 3, "reasoning": "Pagos municipales (permiso de circulación / patente / contribuciones). Cubre 'Municipalidad las c' y 'Municipalidad de pe'." },
+    { "match": "Muni de melipilla", "category": "Impuestos", "categoryId": 22, "confidence": "medium", "count": 2, "reasoning": "Municipalidad de Melipilla. Alternativa: Melipilla-Familia (id 28) si lo tratas como gasto familiar." },
+    { "match": "Impuesto decreto ley 3475", "category": "Impuestos", "categoryId": 22, "confidence": "high", "count": 1, "reasoning": "Impuesto de timbres y estampillas." },
+    { "match": "Impuesto Línea de Sobregiro", "category": "Impuestos", "categoryId": 22, "confidence": "high", "count": 2, "reasoning": "Impuesto asociado a la línea de sobregiro." },
+
+    { "match": "dividendo cr", "category": "Vivienda", "categoryId": 15, "confidence": "high", "count": 5, "reasoning": "Dividendo crédito hipotecario. Minúsculas cubre 'Pago dividendo crédito' y 'Pago Dividendo Credito'." },
+
+    { "match": "Pcfactory", "category": "Tecnología", "categoryId": 27, "confidence": "high", "count": 1, "reasoning": "Cadena de tiendas de computación. Nota: aparece como 'Traspaso A:Pcfactory' (ver override)." },
+    { "match": "Traspaso A:Pcfactory", "category": "Tecnología", "categoryId": 27, "confidence": "high", "count": 1, "reasoning": "Override: gana sobre la regla genérica 'Traspaso A:' por ser más largo." },
+    { "match": "fabricscl", "category": "Hogar", "categoryId": 7, "confidence": "high", "count": 1, "reasoning": "Fabrics (ropa de cama, telas, cortinas, deco hogar). 'Mp*fabricscl'." },
+    { "match": "kitchen cen", "category": "Hogar", "categoryId": 7, "confidence": "medium", "count": 1, "reasoning": "'Kitchen center' (artículos de cocina/hogar). Alternativa: Tecnología si son electrodomésticos." },
+
+    { "match": "Centro mascotte", "category": "Mascotas", "categoryId": 14, "confidence": "high", "count": 1, "reasoning": "Tienda/centro de mascotas." },
+    { "match": "2patitas", "category": "Mascotas", "categoryId": 14, "confidence": "high", "count": 1, "reasoning": "'2patitas compinches' = tienda de mascotas." },
+    { "match": "Peralta y castillo", "category": "Mascotas", "categoryId": 14, "confidence": "high", "count": 4, "reasoning": "Confirmado por el usuario: es mascotas. Cubre variantes 'PERALTA Y CASTILLO L VALPARAISO', 'Peralta y castillo valparaiso' y 'COM.CUOTA FIJA'." },
+
+    { "match": "dr simi", "category": "Salud", "categoryId": 4, "confidence": "high", "count": 1, "reasoning": "Farmacias Dr. Simi. 'Farmacias dr simi'." },
+    { "match": "doctor sim", "category": "Salud", "categoryId": 4, "confidence": "high", "count": 1, "reasoning": "'Farm del doctor sim' = Dr. Simi (variante)." },
+    { "match": "Adm medica", "category": "Salud", "categoryId": 4, "confidence": "medium", "count": 1, "reasoning": "'Adm medica centrome' = administración centro médico." },
+    { "match": "Pago:subsid Salud", "category": "Salud", "categoryId": 4, "confidence": "high", "count": 3, "reasoning": "Confirmado por el usuario: es salud (subsidio/reembolso Isapre). Abono. Cubre las variantes 'Pago:subsid Salud 0965728007'." },
+    { "match": "Pago:proveedores", "category": "Salud", "categoryId": 4, "confidence": "high", "count": 2, "reasoning": "Confirmado por el usuario: también es reembolso de salud. Abono. Cubre 'Pago:proveedores 0991850007'." },
+
+    { "match": "Conclave", "category": "Restaurant", "categoryId": 5, "confidence": "high", "count": 1, "reasoning": "Cónclave 1929: bar/parrilla en Viña del Mar." },
+    { "match": "taproom", "category": "Restaurant", "categoryId": 5, "confidence": "high", "count": 1, "reasoning": "Taproom = bar de cerveza artesanal. 'Mercadopago*taproom'." },
+    { "match": "artemisa bar", "category": "Restaurant", "categoryId": 5, "confidence": "medium", "count": 1, "reasoning": "'Sumup*artemisa bar' = bar." },
+    { "match": "Trae pizza", "category": "Restaurant", "categoryId": 5, "confidence": "high", "count": 1, "reasoning": "Pizzería." },
+    { "match": "Maria cooks", "category": "Restaurant", "categoryId": 5, "confidence": "medium", "count": 2, "reasoning": "Probable restaurante/pastelería. Cubre 'Maria cooks spa' y 'MARIA COOKS SPA'." },
+    { "match": "mandral", "category": "Restaurant", "categoryId": 5, "confidence": "high", "count": 1, "reasoning": "Confirmado por el usuario: 'Mercadopago*mandral' es restaurant." },
+
+    { "match": "coffee bean", "category": "Café", "categoryId": 13, "confidence": "high", "count": 1, "reasoning": "Coffee Beans (cafetería). 'Tuu*coffee beans ch'." },
+    { "match": "coffeebeans", "category": "Café", "categoryId": 13, "confidence": "high", "count": 1, "reasoning": "Variante sin espacio: 'Tuu*coffeebeanschil'." },
+    { "match": "zeit cafe", "category": "Café", "categoryId": 13, "confidence": "high", "count": 1, "reasoning": "'Fudo *zeit cafe' = cafetería." },
+
+    { "match": "Valles de chile", "category": "Alimento", "categoryId": 12, "confidence": "high", "count": 2, "reasoning": "Tostaduría/insumos panadería: frutos secos, semillas, deshidratados (Viña)." },
+    { "match": "Pan y fermento", "category": "Alimento", "categoryId": 12, "confidence": "high", "count": 1, "reasoning": "Panadería." },
+    { "match": "del barrio pana", "category": "Alimento", "categoryId": 12, "confidence": "high", "count": 3, "reasoning": "Confirmado por el usuario: 'Tuu*del barrio pana' es panadería." },
+    { "match": "cooperativa", "category": "Alimento", "categoryId": 12, "confidence": "high", "count": 1, "reasoning": "Confirmado por el usuario: 'Fudo *cooperativa' es alimento." },
+    { "match": "masita rica", "category": "Alimento", "categoryId": 12, "confidence": "medium", "count": 1, "reasoning": "'Sumup*masita rica' = panadería/pastelería." },
+    { "match": "Del pedregal", "category": "Alimento", "categoryId": 12, "confidence": "medium", "count": 1, "reasoning": "Del Pedregal (jugos/néctares/agro)." },
+    { "match": "Payscan", "category": "Alimento", "categoryId": 12, "confidence": "medium", "count": 2, "reasoning": "Vending/kiosco ('Payscan* coca cola', 'Payscan*snack cente')." },
+
+    { "match": "Sta isabel", "category": "Supermercado", "categoryId": 1, "confidence": "high", "count": 1, "reasoning": "Santa Isabel (abreviado, no lo cubre la regla existente 'Santa Isabel')." },
+    { "match": "minimarket faba", "category": "Supermercado", "categoryId": 1, "confidence": "medium", "count": 1, "reasoning": "'Tuu*minimarket faba' = minimarket." },
+
+    { "match": "Univ.de chile", "category": "Educación", "categoryId": 8, "confidence": "medium", "count": 1, "reasoning": "Pago a Universidad de Chile." },
+
+    { "match": "Andes path spa", "category": "AndesPath", "categoryId": 32, "confidence": "high", "count": 1, "reasoning": "Ingreso desde Andes Path SPA (4.965.201). Más largo que 'Traspaso De:' -> gana." },
+    { "match": "Traspaso A:Fintual agf sa", "category": "Inversiones", "categoryId": 33, "confidence": "high", "count": 1, "reasoning": "Aporte a Fintual (fondos). Categoría 'Inversiones' creada (id 33)." },
+    { "match": "Transferencia enviada a Kupo", "category": "Transporte", "categoryId": 2, "confidence": "medium", "count": 3, "reasoning": "Kupo/Kupospay: pasajes y transporte terrestre. Más largo que 'Transferencia enviada a' -> gana." },
+
+    { "match": "Comisión por Plan", "category": "Comisiones Bancarias", "categoryId": 23, "confidence": "high", "count": 2, "reasoning": "Comisión por plan cuenta corriente." },
+    { "match": "Comision Admin", "category": "Comisiones Bancarias", "categoryId": 23, "confidence": "high", "count": 2, "reasoning": "Comisión administración mensual plan cuenta corriente." },
+    { "match": "Cobro adm mensual", "category": "Comisiones Bancarias", "categoryId": 23, "confidence": "high", "count": 1, "reasoning": "Cobro administración mensual." },
+    { "match": "Interés sobregiro", "category": "Comisiones Bancarias", "categoryId": 23, "confidence": "high", "count": 1, "reasoning": "Interés por sobregiro no pactado." },
+
+    { "match": "Tarjeta de Crédito Visa", "category": "Transferencia", "categoryId": 10, "confidence": "medium", "count": 4, "reasoning": "PAC pago tarjeta de crédito (pago del saldo, movimiento interno, no gasto). Variante con tilde." },
+    { "match": "Tarjeta De Credito Visa", "category": "Transferencia", "categoryId": 10, "confidence": "medium", "count": 1, "reasoning": "Misma idea, variante sin tilde ('Pac Tarjeta De Credito Visa')." },
+    { "match": "Cargo Por Pago Tc", "category": "Transferencia", "categoryId": 10, "confidence": "medium", "count": 1, "reasoning": "Pago de tarjeta de crédito (movimiento interno)." },
+    { "match": "Pago Automatico Linea Sobregiro", "category": "Transferencia", "categoryId": 10, "confidence": "medium", "count": 3, "reasoning": "Pago/abono de la línea de sobregiro (capital). Movimiento interno." },
+    { "match": "Amortización Línea de Sobregiro", "category": "Transferencia", "categoryId": 10, "confidence": "medium", "count": 1, "reasoning": "Amortización de capital de la línea de sobregiro." },
+    { "match": "Transferencia desde Línea Sobregiro", "category": "Transferencia", "categoryId": 10, "confidence": "medium", "count": 4, "reasoning": "Giro desde la línea de sobregiro a cuenta corriente." },
+
+    { "match": "Transferencia enviada a", "category": "Transferencia", "categoryId": 10, "confidence": "medium", "count": 8, "reasoning": "Regla genérica para transferencias salientes a personas/terceros. Las reglas más específicas (Kupo, Andes path, Fintual, Pcfactory) ganan por ser más largas. REVISA: quizá quieras categorizar a algunas personas como arriendo/regalo/etc." },
+    { "match": "Transferencia recibida de", "category": "Transferencia", "categoryId": 10, "confidence": "medium", "count": 10, "reasoning": "Genérica para transferencias recibidas (muchas son de tu propia cuenta: 'Maximiliano Federico Osorio'). REVISA si alguna es Sueldo." },
+    { "match": "Traspaso A:", "category": "Transferencia", "categoryId": 10, "confidence": "medium", "count": 17, "reasoning": "Genérica (Banco de Chile) para traspasos salientes a personas. Overrides: Fintual->Inversiones, Pcfactory->Tecnología." },
+    { "match": "Traspaso De:", "category": "Transferencia", "categoryId": 10, "confidence": "medium", "count": 9, "reasoning": "Genérica para traspasos recibidos de personas. Override: 'Andes path spa'->AndesPath." }
+  ],
+
+  "needsReview": [
+    { "descriptions": ["MERCADOPAGO *MERCADOL Las Condes", "MERCADOPAGO *MERC**OL COMPRAS", "MERCADOPAGO *LDS"], "count": 13, "guess": "Tecnología (id 27)", "reasoning": "MercadoPago*MercadoLibre. La regla existente 'Mercado Libre' -> Tecnología, PERO Mercado Libre es marketplace general (compras recientes en Gmail: funda de bicicleta, arnés para perro -> Mascotas/Deporte). Sugiero crear regla 'MERCADOPAGO *MERCADOL'->Tecnología solo si asumes que la mayoría es tech; si no, déjalo en Otro y categoriza caso a caso." },
+    { "descriptions": ["Abono Cashback Bciplus"], "count": 4, "guess": "(ingreso) ¿Comisiones Bancarias o categoría nueva 'Cashback/Reembolsos'?", "reasoning": "Son ABONOS (ingreso) de cashback. No encajan bien en una categoría de gasto. Decide si quieres una categoría de reembolsos." },
+    { "descriptions": ["Cargo por pago de servicios"], "count": 1, "guess": "Servicios (id 6) o Comisiones Bancarias", "reasoning": "Glosa genérica; podría ser comisión bancaria por pagar servicios o el servicio mismo." },
+    { "descriptions": ["Pago pac en pesos (+2.382.933)", "Pago:dev Impuesto 0608050000 (+472.331)", "MONTO CANCELADO (+449.183)", "Traspaso deuda internacional", "Traspaso deuda internac"], "count": 5, "guess": "varios", "reasoning": "Reversas/devoluciones/ajustes. 'Pago:dev Impuesto' parece devolución de impuestos (Impuestos). 'MONTO CANCELADO' es reversa de 'Cargo Por Pago Tc'. Revisar manualmente." },
+    { "descriptions": ["Tuu*anubis", "TUU*ARTELILIZ", "Tuu*casazul delicia"], "count": 3, "guess": "Alimento/Café (probable)", "reasoning": "Comercios pequeños vía TUU en Viña. 'casazul delicias'=¿dulces/café? 'anubis'/'arteliliz' desconocidos. Confianza baja. ('del barrio pana' ya resuelto -> Alimento)." },
+    { "descriptions": ["Mercadopago*ivanale", "Mercadopago*kcincos", "Mercadopago*mandrakeecuad", "Mercadopago*dramigo", "Merpago*melimas", "Mercadopago*product", "Mercadopago*mercado", "Mercado pago N tcom", "MP *SOCIEDADVYG", "MERCADOPAGO BITACORA", "RedGloba*ALGO DULCECIT"], "count": 19, "guess": "desconocido", "reasoning": "Comercios chicos vía MercadoPago, sin glosa clara. 'ALGO DULCECIT'=dulces (¿Alimento?), 'BITACORA'=¿librería? Difícil sin recibo. Te sugiero categorizarlos a mano o que busque en Gmail uno por uno si quieres. ('mandral' ya resuelto -> Restaurant)." },
+    { "descriptions": ["Local nuevo", "La lulu del 6028", "Guillermo toro agui", "Fabrica artesanal d", "Comercial gastronom", "Comercial la uva lt", "Fudo *restaurant"], "count": 7, "guess": "Alimento/Restaurant (probable)", "reasoning": "Comercios locales Valpo/Viña sin identificación clara. 'Fudo *restaurant'->Restaurant es razonable; 'Comercial la uva'->¿botillería/Alimento?; el resto incierto. ('cooperativa' ya resuelto -> Alimento)." },
+    { "descriptions": ["Vina del mar 1 / 5 / 7", "Univ.de chile nic-c ya cubierto"], "count": 3, "guess": "¿Transporte (estacionamiento) o municipal?", "reasoning": "Montos chicos repetidos ($6.000) con glosa 'Vina del mar N' -> posible parquímetro/estacionamiento municipal. Confianza baja." }
+  ]
+}
