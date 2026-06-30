@@ -20,6 +20,7 @@ const HOUSEHOLD_SEGMENTS: { value: HouseholdFilter; label: string }[] = [
   { value: "PERSONAL", label: "Personal" },
   { value: "VINA", label: FAMILIAR_SHORT_LABEL.VINA },
   { value: "MELIPILLA", label: FAMILIAR_SHORT_LABEL.MELIPILLA },
+  { value: "ANDESPATH", label: FAMILIAR_SHORT_LABEL.ANDESPATH },
 ];
 
 const VALID_HOUSEHOLDS = new Set(HOUSEHOLD_SEGMENTS.map((s) => s.value));
