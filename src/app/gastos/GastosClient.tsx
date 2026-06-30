@@ -277,9 +277,10 @@ export function GastosClient({ rows, mes }: Props) {
                     </button>
                   </div>
 
-                  {/* Expanded transactions — CLP only, largest first */}
+                  {/* Expanded transactions — CLP only, largest first.
+                      Indented with a left rail so the rows read as children. */}
                   {expanded && (
-                    <div className="pl-7 pb-2">
+                    <div className="ml-7 pl-4 pb-2 border-l-2 border-violet-100">
                       {c.transactions.map((t) => (
                         <TransactionCard key={t.id} transaction={t} />
                       ))}
