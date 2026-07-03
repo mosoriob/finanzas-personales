@@ -113,9 +113,14 @@ export async function POST(req: NextRequest) {
 
         // Currency is part of the identity: a USD charge and a coincidentally
         // same-amount peso charge are distinct rows. Absent = null (CLP).
+        // description is deliberately NOT part of the dedup key: the bank's
+        // fixed-width description tail is unstable — it flips between the merchant
+        // city and the movement type "compras" as a charge settles — so keying on
+        // it re-imports the same transaction as a duplicate on every sync. Dedupe
+        // on date+amount+account+currency, which is stable across that drift.
         const currency = toStoredCurrency(m.currency);
         const existing = await prisma.transaction.findFirst({
-          where: { date, description: m.description, amount: m.amount, accountId: dbAccount.id, currency },
+          where: { date, amount: m.amount, accountId: dbAccount.id, currency },
         });
 
         if (existing) { skippedCount++; continue; }
@@ -148,9 +153,12 @@ export async function POST(req: NextRequest) {
         const [day, month, year] = m.date.split("-").map(Number);
         const date = new Date(Date.UTC(year, month - 1, day));
 
+        // See the accounts loop above: description is excluded from the dedup key
+        // because the bank's description tail (city ↔ "compras") drifts as a
+        // credit-card charge settles, which otherwise re-imports it as a duplicate.
         const currency = toStoredCurrency(m.currency);
         const existing = await prisma.transaction.findFirst({
-          where: { date, description: m.description, amount: m.amount, accountId: dbAccount.id, currency },
+          where: { date, amount: m.amount, accountId: dbAccount.id, currency },
         });
 
         if (existing) { skippedCount++; continue; }

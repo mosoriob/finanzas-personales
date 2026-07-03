@@ -182,6 +182,39 @@ describe("sync route — currency threading", () => {
     expect(mockTxCreate.mock.calls.map((c) => c[0].data.currency)).toEqual(["USD", null]);
   });
 
+  it("de-dupes a credit-card charge whose description tail drifted (city -> \"compras\")", async () => {
+    // Regression: the bank's fixed-width description tail flips between the
+    // merchant city and the movement type "compras" as a charge settles. The
+    // dedup key must NOT include description, or the same charge re-imports as a
+    // duplicate on the next sync (the observed bug: 26 duplicate rows).
+    scrapeResult = {
+      success: true,
+      bank: "BCI",
+      creditCards: [
+        {
+          label: "Tarjeta",
+          movements: [
+            // Re-scrape of a charge already stored with description "...valpar".
+            { date: "20-06-2026", description: "San pancracio           compras", amount: -4770 },
+          ],
+        },
+      ],
+    };
+    // The previously-stored row has the SAME date+amount+account+currency but a
+    // different description tail. Dedup keyed on those stable fields finds it.
+    mockTxFindFirst.mockImplementation(async ({ where }) => {
+      expect(where).not.toHaveProperty("description");
+      return where.amount === -4770 ? { id: 281, description: "San pancracio            valpar" } : null;
+    });
+
+    const res = await POST(makeRequest());
+    const body = await res.json();
+
+    expect(mockTxCreate).not.toHaveBeenCalled();
+    expect(body.skipped).toBe(1);
+    expect(body.imported).toBe(0);
+  });
+
   it("persists a peso movement with currency null (absent marker)", async () => {
     scrapeResult = {
       success: true,
