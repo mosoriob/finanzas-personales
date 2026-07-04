@@ -1570,7 +1570,8 @@ function BancosPanel() {
   const [syncing, setSyncing] = useState(false);
   const [status, setStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
-  async function handleSync() {
+  async function handleSync(e: React.FormEvent) {
+    e.preventDefault();
     if (!selectedBank || !rut || !password) return;
     setSyncing(true);
     setStatus(null);
@@ -1628,7 +1629,7 @@ function BancosPanel() {
       </div>
 
       {/* Sync form */}
-      <div className="bg-white rounded-2xl border border-gray-100 p-5 flex flex-col gap-4">
+      <form onSubmit={handleSync} className="bg-white rounded-2xl border border-gray-100 p-5 flex flex-col gap-4">
         <h3 className="text-sm font-semibold text-gray-700">Datos de acceso</h3>
 
         {/* Bank select */}
@@ -1660,11 +1661,14 @@ function BancosPanel() {
 
         {/* RUT */}
         <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+          <label htmlFor="rut" className="text-xs font-medium text-gray-500 uppercase tracking-wide">
             RUT
           </label>
           <input
-            type="password"
+            id="rut"
+            name="rut"
+            type="text"
+            autoComplete="username"
             value={rut}
             onChange={(e) => setRut(e.target.value)}
             placeholder="12.345.678-9"
@@ -1674,11 +1678,14 @@ function BancosPanel() {
 
         {/* Password */}
         <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+          <label htmlFor="password" className="text-xs font-medium text-gray-500 uppercase tracking-wide">
             Clave internet
           </label>
           <input
+            id="password"
+            name="password"
             type="password"
+            autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Tu clave de banca en línea"
@@ -1688,7 +1695,7 @@ function BancosPanel() {
 
         {/* Submit */}
         <button
-          onClick={handleSync}
+          type="submit"
           disabled={syncing || !selectedBank || !rut || !password}
           className="bg-indigo-500 text-white rounded-xl px-6 py-3 text-sm font-semibold hover:bg-indigo-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-1"
         >
@@ -1711,7 +1718,7 @@ function BancosPanel() {
             {selectedBank === "bci" || selectedBank === "itau" ? " Aprueba la verificación en tu celular." : ""}
           </p>
         )}
-      </div>
+      </form>
 
       {/* Status message */}
       {status && (
