@@ -13,14 +13,19 @@ type Rule = { id: number; match: string; categoryId: number };
 // The per-movement decision, applied identically in the accounts loop and the
 // credit-cards loop (unified here so the ladder lives in one place):
 //   1. Exact match on (date, amount, accountId, currency) → skip.
-//   2. Fuzzy candidate: an existing transaction that existed BEFORE this sync
+//   2. Rejection memory: a RejectedDuplicate with the same (accountId, amount,
+//      currency) and a remembered date within ±3 days of the movement → silently
+//      skip (the user already confirmed this drifted charge is a duplicate). This
+//      MUST run before the fuzzy step, or a rejected duplicate re-queues forever.
+//   3. Fuzzy candidate: an existing transaction that existed BEFORE this sync
 //      (id ≤ maxTxId), matches (amount, accountId, currency), and whose date is
 //      within ±3 days of the movement (but not an exact date match) → the
 //      movement is a suspected date-drift duplicate. Stage it (unless already
 //      staged) and do NOT insert a real transaction.
-//   3. Else → insert the transaction.
-// Fuzzy matching uses amount + account + currency only — never description or a
-// merchant prefix. Currency stays part of identity everywhere.
+//   4. Else → insert the transaction.
+// Fuzzy matching (and the rejection window) use amount + account + currency only
+// — never description or a merchant prefix. Currency stays part of identity
+// everywhere, so a USD charge never matches a same-amount CLP row or rejection.
 async function decideMovement(
   m: Movement,
   accountId: number,
@@ -40,12 +45,26 @@ async function decideMovement(
   });
   if (exact) return "skipped";
 
-  // 2. Fuzzy candidate: same amount/account/currency, pre-sync id, date within
+  const lo = new Date(date.getTime() - DRIFT_WINDOW_MS);
+  const hi = new Date(date.getTime() + DRIFT_WINDOW_MS);
+
+  // 2. Rejection memory: the user already confirmed a same-amount/account/
+  // currency charge within ±3 days of this movement is a duplicate. Silently
+  // skip it (counts as skipped). This runs BEFORE the fuzzy step so a rejected
+  // duplicate — which the scraper keeps re-emitting every sync — is not re-queued
+  // forever. A movement OUTSIDE ±3 days of every rejection is not covered and
+  // falls through to the fuzzy step, so a genuinely new later charge is still
+  // flagged. Currency stays part of identity: a USD charge never matches a CLP
+  // rejection.
+  const rejected = await prisma.rejectedDuplicate.findFirst({
+    where: { accountId, amount: m.amount, currency, date: { gte: lo, lte: hi } },
+  });
+  if (rejected) return "skipped";
+
+  // 3. Fuzzy candidate: same amount/account/currency, pre-sync id, date within
   // ±3 days but not exactly equal. The id ≤ maxTxId guard is load-bearing — it
   // stops two real same-amount charges that both arrive in THIS sync (e.g. two
   // same-fare rides on consecutive days) from being flagged against each other.
-  const lo = new Date(date.getTime() - DRIFT_WINDOW_MS);
-  const hi = new Date(date.getTime() + DRIFT_WINDOW_MS);
   const nearby = await prisma.transaction.findMany({
     where: {
       accountId,
@@ -88,7 +107,7 @@ async function decideMovement(
     return "pending";
   }
 
-  // 3. Insert as a real transaction.
+  // 4. Insert as a real transaction.
   const categoryId = matchCategory(m.description, rules) ?? otroCategoryId;
   await prisma.transaction.create({
     data: { date, description: m.description, amount: m.amount, accountId, categoryId, currency },

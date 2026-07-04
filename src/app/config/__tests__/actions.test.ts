@@ -26,6 +26,9 @@ vi.mock("@/lib/db", () => ({
       findUnique: vi.fn(),
       delete: vi.fn(),
     },
+    rejectedDuplicate: {
+      create: vi.fn(),
+    },
     rule: {
       findMany: vi.fn(),
       create: vi.fn(),
@@ -49,6 +52,7 @@ import {
   updateRule,
   deleteRule,
   acceptPending,
+  rejectPending,
   previewApplyRules,
   applyRulesToExisting,
   exportRules,
@@ -78,6 +82,9 @@ const mockPrisma = prisma as unknown as {
   pendingSyncTransaction: {
     findUnique: ReturnType<typeof vi.fn>;
     delete: ReturnType<typeof vi.fn>;
+  };
+  rejectedDuplicate: {
+    create: ReturnType<typeof vi.fn>;
   };
   rule: {
     findMany: ReturnType<typeof vi.fn>;
@@ -671,6 +678,53 @@ describe("acceptPending", () => {
 
     expect(mockPrisma.transaction.create).not.toHaveBeenCalled();
     expect(mockPrisma.pendingSyncTransaction.delete).toHaveBeenCalledWith({ where: { id: 7 } });
+  });
+});
+
+// ─── rejectPending ───
+
+describe("rejectPending", () => {
+  const pending = {
+    id: 7,
+    date: new Date(Date.UTC(2026, 5, 22)),
+    description: "San pancracio compras",
+    amount: -4770,
+    currency: null,
+    accountId: 10,
+    categoryId: 3,
+    candidateId: 281,
+  };
+
+  it("writes a RejectedDuplicate from the pending's stable fields and deletes the pending", async () => {
+    mockPrisma.pendingSyncTransaction.findUnique.mockResolvedValue(pending);
+    mockPrisma.rejectedDuplicate.create.mockResolvedValue({ id: 1 });
+    mockPrisma.pendingSyncTransaction.delete.mockResolvedValue(pending);
+
+    const result = await rejectPending(7);
+    expect(result).toEqual({ ok: true });
+
+    // Only the stable identity fields are remembered — no candidateId, no
+    // description (both drift / are irrelevant to the memory).
+    expect(mockPrisma.rejectedDuplicate.create).toHaveBeenCalledWith({
+      data: {
+        date: pending.date,
+        amount: -4770,
+        currency: null,
+        accountId: 10,
+      },
+    });
+    expect(mockPrisma.pendingSyncTransaction.delete).toHaveBeenCalledWith({ where: { id: 7 } });
+    expect(revalidatePath).toHaveBeenCalledWith("/config");
+  });
+
+  it("is a harmless no-op when the pending has already vanished", async () => {
+    mockPrisma.pendingSyncTransaction.findUnique.mockResolvedValue(null);
+
+    const result = await rejectPending(7);
+    expect(result).toEqual({ ok: true });
+
+    expect(mockPrisma.rejectedDuplicate.create).not.toHaveBeenCalled();
+    expect(mockPrisma.pendingSyncTransaction.delete).not.toHaveBeenCalled();
   });
 });
 

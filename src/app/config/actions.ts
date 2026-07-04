@@ -428,6 +428,36 @@ export async function acceptPending(id: number): Promise<{ ok: true }> {
   return { ok: true };
 }
 
+// Rejects a staged suspect: confirms it is a duplicate and remembers that
+// decision durably. Writes a RejectedDuplicate from the pending's STABLE fields
+// (accountId, amount, currency, date) — the movement's own now-settled date —
+// then deletes the pending. On every future sync the ladder's rejection-memory
+// step silently skips a movement matching those fields within ±3 days of the
+// remembered date, so the same drifted charge never nags again. Rejecting is not
+// self-healing (the scraper keeps emitting the drifted movement), which is why
+// the memory must be durable; ±3-day bounding keeps it from swallowing an
+// unrelated same-amount charge months later. No transaction is ever created. A
+// pending that has already vanished (double-click / concurrent resolve) is a
+// harmless no-op.
+export async function rejectPending(id: number): Promise<{ ok: true }> {
+  const pending = await prisma.pendingSyncTransaction.findUnique({ where: { id } });
+  if (!pending) return { ok: true };
+
+  await prisma.rejectedDuplicate.create({
+    data: {
+      date: pending.date,
+      amount: pending.amount,
+      currency: pending.currency,
+      accountId: pending.accountId,
+    },
+  });
+
+  await prisma.pendingSyncTransaction.delete({ where: { id } });
+
+  revalidatePath("/config");
+  return { ok: true };
+}
+
 // ─── Apply rules to existing transactions ───
 
 export type ApplyRulesPreview =

@@ -18,6 +18,7 @@ model Account {
   createdAt    DateTime      @default(now())
   transactions Transaction[]
   pendingSyncTransactions PendingSyncTransaction[]
+  rejectedDuplicates RejectedDuplicate[]
 }
 
 model Category {
@@ -98,6 +99,27 @@ model PendingSyncTransaction {
   createdAt   DateTime @default(now())
 
   @@unique([accountId, amount, currency, date])
+  @@index([accountId])
+}
+
+// A durable "these are the same charge" memory written when a user rejects a
+// suspected date-drift duplicate. Keyed on the STABLE fields
+// (accountId, amount, currency, date), where `date` is the rejected movement's
+// own (now-stable, settled) date. It carries NO reference to the candidate — the
+// memory is purely "a movement matching these fields within ±3 days of this date
+// is a known duplicate; silently skip it". The sync ladder checks this memory
+// after exact-match but BEFORE fuzzy queuing, or a rejected duplicate would
+// re-queue forever. `accountId` cascades on account delete. Currency stays part
+// of identity, so a USD charge never matches a same-amount CLP rejection.
+model RejectedDuplicate {
+  id         Int      @id @default(autoincrement())
+  date       DateTime
+  amount     Int
+  currency   String?
+  accountId  Int
+  account    Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
   @@index([accountId])
 }
 

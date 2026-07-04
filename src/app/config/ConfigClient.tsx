@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { createAccount, deleteAccount, createCategory, toggleAccountVisibility, updateCategory, toggleCategoryExclusion, createRule, updateRule, deleteRule, previewApplyRules, applyRulesToExisting, exportRules, importRules, loadRuleSuggestions, dismissSuggestion, acceptSuggestion, acceptPending } from "./actions";
+import { createAccount, deleteAccount, createCategory, toggleAccountVisibility, updateCategory, toggleCategoryExclusion, createRule, updateRule, deleteRule, previewApplyRules, applyRulesToExisting, exportRules, importRules, loadRuleSuggestions, dismissSuggestion, acceptSuggestion, acceptPending, rejectPending } from "./actions";
 import type { ImportRulesResult } from "./actions";
 import type { RuleSuggestion } from "@/lib/rule-suggestions";
 import { DeleteCategoryDialog } from "@/components/DeleteCategoryDialog";
@@ -250,22 +250,34 @@ function toCard(t: SuspectTransaction) {
 // Standing panel listing each suspected date-drift duplicate side-by-side with
 // the existing transaction it might duplicate. Persistent: it renders whenever
 // there are suspects (not only right after a sync). Aceptar imports the suspect
-// as a real transaction; the server action revalidates and we refresh so the
-// panel repopulates from fresh props. A suspect whose candidate was deleted is
-// still shown (alone) and remains acceptable.
+// as a real transaction; Rechazar discards it and durably remembers the
+// rejection so the same drifted movement is silently skipped on future syncs.
+// Either server action revalidates and we refresh so the panel repopulates from
+// fresh props. A suspect whose candidate was deleted is still shown (alone) and
+// remains both acceptable and rejectable.
 function PendingReviewPanel({ suspects }: { suspects: PendingSuspect[] }) {
   const router = useRouter();
-  const [busyId, setBusyId] = useState<number | null>(null);
+  const [busy, setBusy] = useState<{ id: number; action: "accept" | "reject" } | null>(null);
 
   if (suspects.length === 0) return null;
 
   async function handleAccept(id: number) {
-    setBusyId(id);
+    setBusy({ id, action: "accept" });
     try {
       await acceptPending(id);
       router.refresh();
     } finally {
-      setBusyId(null);
+      setBusy(null);
+    }
+  }
+
+  async function handleReject(id: number) {
+    setBusy({ id, action: "reject" });
+    try {
+      await rejectPending(id);
+      router.refresh();
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -281,7 +293,7 @@ function PendingReviewPanel({ suspects }: { suspects: PendingSuspect[] }) {
       </p>
       <ul className="flex flex-col gap-3">
         {suspects.map((s) => {
-          const busy = busyId === s.id;
+          const rowBusy = busy?.id === s.id;
           return (
             <li
               key={s.id}
@@ -307,14 +319,22 @@ function PendingReviewPanel({ suspects }: { suspects: PendingSuspect[] }) {
                   )}
                 </div>
               </div>
-              <div className="flex justify-end">
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleReject(s.id)}
+                  disabled={rowBusy}
+                  className="text-sm bg-white text-red-600 border border-red-200 rounded-xl px-5 py-2 font-semibold hover:bg-red-50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {rowBusy && busy?.action === "reject" ? "Descartando…" : "Rechazar (es duplicado)"}
+                </button>
                 <button
                   type="button"
                   onClick={() => handleAccept(s.id)}
-                  disabled={busy}
+                  disabled={rowBusy}
                   className="text-sm bg-indigo-500 text-white rounded-xl px-5 py-2 font-semibold hover:bg-indigo-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  {busy ? "Importando…" : "Aceptar (importar)"}
+                  {rowBusy && busy?.action === "accept" ? "Importando…" : "Aceptar (importar)"}
                 </button>
               </div>
             </li>

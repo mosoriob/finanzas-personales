@@ -50,6 +50,7 @@ vi.mock("@/lib/db", () => ({
     account: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
     transaction: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn(), aggregate: vi.fn() },
     pendingSyncTransaction: { findFirst: vi.fn(), create: vi.fn() },
+    rejectedDuplicate: { findFirst: vi.fn() },
   },
 }));
 
@@ -65,6 +66,7 @@ const mockTxCreate = prisma.transaction.create as ReturnType<typeof vi.fn>;
 const mockTxAggregate = prisma.transaction.aggregate as ReturnType<typeof vi.fn>;
 const mockPendingFindFirst = prisma.pendingSyncTransaction.findFirst as ReturnType<typeof vi.fn>;
 const mockPendingCreate = prisma.pendingSyncTransaction.create as ReturnType<typeof vi.fn>;
+const mockRejectedFindFirst = prisma.rejectedDuplicate.findFirst as ReturnType<typeof vi.fn>;
 
 function makeRequest() {
   return {
@@ -120,6 +122,29 @@ function installStore(seed: Row[]) {
   return store;
 }
 
+type Rejection = { date: Date; amount: number; accountId: number; currency: string | null };
+
+// Seeds the rejected-duplicate mock. findFirst honours the where clause the route
+// builds: same (accountId, amount, currency) and a remembered date within the
+// ±3-day drift window of the movement — so currency-as-identity and the window
+// bound are exercised as real query behaviour.
+function installRejections(seed: Rejection[]) {
+  mockRejectedFindFirst.mockImplementation(async ({ where }) => {
+    const lo = (where.date.gte as Date).getTime();
+    const hi = (where.date.lte as Date).getTime();
+    return (
+      seed.find(
+        (r) =>
+          r.accountId === where.accountId &&
+          r.amount === where.amount &&
+          r.currency === where.currency &&
+          r.date.getTime() >= lo &&
+          r.date.getTime() <= hi
+      ) ?? null
+    );
+  });
+}
+
 const utc = (y: number, m: number, d: number) => new Date(Date.UTC(y, m - 1, d));
 
 beforeEach(() => {
@@ -130,6 +155,7 @@ beforeEach(() => {
   mockAccountFindFirst.mockResolvedValue({ id: 10, name: "Tarjeta", bank: "BCI", balance: 0 });
   mockPendingFindFirst.mockResolvedValue(null);
   mockPendingCreate.mockResolvedValue({ id: 1 });
+  mockRejectedFindFirst.mockResolvedValue(null);
 });
 
 describe("sync route — duplicate-suspect staging", () => {
@@ -237,6 +263,87 @@ describe("sync route — duplicate-suspect staging", () => {
     expect(body.imported).toBe(1);
     expect(body.pendingReview).toBe(0);
     expect(mockPendingCreate).not.toHaveBeenCalled();
+    expect(mockTxCreate.mock.calls[0][0].data).toMatchObject({ amount: -119, currency: "USD" });
+  });
+
+  it("silently skips a re-synced drifted movement that matches a remembered rejection", async () => {
+    // The candidate transaction was rejected earlier and never imported, so the
+    // pre-sync store has NO matching row — only the rejection memory (remembered
+    // at the settled date, the 22nd). The scraper still emits the drifted movement
+    // (the 21st, within ±3d). It must be counted as skipped, NOT re-queued.
+    installStore([]);
+    installRejections([{ date: utc(2026, 6, 22), amount: -4770, accountId: 10, currency: null }]);
+    scrapeResult = {
+      success: true,
+      bank: "BCI",
+      creditCards: [
+        {
+          label: "Tarjeta",
+          movements: [{ date: "21-06-2026", description: "San pancracio compras", amount: -4770 }],
+        },
+      ],
+    };
+
+    const res = await POST(makeRequest());
+    const body = await res.json();
+
+    expect(body.skipped).toBe(1);
+    expect(body.imported).toBe(0);
+    expect(body.pendingReview).toBe(0);
+    expect(mockPendingCreate).not.toHaveBeenCalled();
+    expect(mockTxCreate).not.toHaveBeenCalled();
+  });
+
+  it("queues a fresh suspect when a same-amount movement falls OUTSIDE the ±3-day rejection window", async () => {
+    // A rejection is remembered at the 22nd. A genuinely new same-amount charge
+    // appears much later (July 10) — outside ±3 days of the rejection — so the
+    // memory does not cover it. It still has a fuzzy candidate (a pre-sync row on
+    // July 9) and must be queued fresh for review, never silently swallowed.
+    installStore([{ id: 281, date: utc(2026, 7, 9), amount: -4770, accountId: 10, currency: null }]);
+    installRejections([{ date: utc(2026, 6, 22), amount: -4770, accountId: 10, currency: null }]);
+    scrapeResult = {
+      success: true,
+      bank: "BCI",
+      creditCards: [
+        {
+          label: "Tarjeta",
+          movements: [{ date: "10-07-2026", description: "San pancracio compras", amount: -4770 }],
+        },
+      ],
+    };
+
+    const res = await POST(makeRequest());
+    const body = await res.json();
+
+    expect(body.pendingReview).toBe(1);
+    expect(body.skipped).toBe(0);
+    expect(mockPendingCreate).toHaveBeenCalledTimes(1);
+    expect(mockPendingCreate.mock.calls[0][0].data).toMatchObject({ amount: -4770, candidateId: 281 });
+  });
+
+  it("never matches a USD movement against a same-amount CLP rejection", async () => {
+    // A CLP rejection is remembered at the 22nd. A USD movement of the same
+    // amount within the window shares everything BUT currency, so the memory must
+    // not cover it — it imports rather than being silently skipped.
+    installStore([]);
+    installRejections([{ date: utc(2026, 6, 22), amount: -119, accountId: 10, currency: null }]);
+    scrapeResult = {
+      success: true,
+      bank: "BCI",
+      creditCards: [
+        {
+          label: "Tarjeta",
+          movements: [{ date: "21-06-2026", description: "ANTHROPIC CLAUDE", amount: -119, currency: "USD" }],
+        },
+      ],
+    };
+
+    const res = await POST(makeRequest());
+    const body = await res.json();
+
+    expect(body.imported).toBe(1);
+    expect(body.skipped).toBe(0);
+    expect(body.pendingReview).toBe(0);
     expect(mockTxCreate.mock.calls[0][0].data).toMatchObject({ amount: -119, currency: "USD" });
   });
 });

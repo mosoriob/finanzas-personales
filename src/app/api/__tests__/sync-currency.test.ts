@@ -48,6 +48,7 @@ vi.mock("@/lib/db", () => ({
     account: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
     transaction: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn(), aggregate: vi.fn() },
     pendingSyncTransaction: { findFirst: vi.fn(), create: vi.fn() },
+    rejectedDuplicate: { findFirst: vi.fn() },
   },
 }));
 
@@ -62,6 +63,7 @@ const mockTxFindMany = prisma.transaction.findMany as ReturnType<typeof vi.fn>;
 const mockTxCreate = prisma.transaction.create as ReturnType<typeof vi.fn>;
 const mockTxAggregate = prisma.transaction.aggregate as ReturnType<typeof vi.fn>;
 const mockPendingFindFirst = prisma.pendingSyncTransaction.findFirst as ReturnType<typeof vi.fn>;
+const mockRejectedFindFirst = prisma.rejectedDuplicate.findFirst as ReturnType<typeof vi.fn>;
 
 function makeRequest() {
   return {
@@ -82,6 +84,7 @@ beforeEach(() => {
   mockTxAggregate.mockResolvedValue({ _max: { id: 0 } });
   mockTxFindMany.mockResolvedValue([]);
   mockPendingFindFirst.mockResolvedValue(null);
+  mockRejectedFindFirst.mockResolvedValue(null);
 });
 
 describe("sync route — currency threading", () => {
