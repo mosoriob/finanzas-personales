@@ -382,6 +382,52 @@ export async function acceptSuggestion(data: {
   return { ok: true, recategorized: ids.length };
 }
 
+// ─── Sync duplicate suspects (PendingSyncTransaction) ───
+
+// Accepts a staged suspect: imports it as a real transaction. First re-runs the
+// exact-match check (date, amount, accountId, currency) — if an intervening sync
+// already imported the settled charge, the pending is deleted WITHOUT inserting,
+// so accepting can never create the very duplicate this feature exists to
+// prevent. Otherwise a real transaction is created from the STORED fields
+// (including the category resolved at sync time) with manuallySet:false, so it
+// does not pollute the rule-suggestion evidence; the pending is then removed. A
+// pending that has already vanished (double-click / concurrent accept) is a
+// harmless no-op.
+export async function acceptPending(id: number): Promise<{ ok: true }> {
+  const pending = await prisma.pendingSyncTransaction.findUnique({ where: { id } });
+  if (!pending) return { ok: true };
+
+  const existing = await prisma.transaction.findFirst({
+    where: {
+      date: pending.date,
+      amount: pending.amount,
+      accountId: pending.accountId,
+      currency: pending.currency,
+    },
+  });
+
+  if (!existing) {
+    await prisma.transaction.create({
+      data: {
+        date: pending.date,
+        description: pending.description,
+        amount: pending.amount,
+        currency: pending.currency,
+        accountId: pending.accountId,
+        categoryId: pending.categoryId,
+        manuallySet: false,
+      },
+    });
+  }
+
+  await prisma.pendingSyncTransaction.delete({ where: { id } });
+
+  revalidatePath("/config");
+  revalidatePath("/");
+  revalidatePath("/transacciones");
+  return { ok: true };
+}
+
 // ─── Apply rules to existing transactions ───
 
 export type ApplyRulesPreview =

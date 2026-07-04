@@ -4,6 +4,98 @@ import { matchCategory } from "@/lib/rules";
 import { toStoredCurrency } from "@/lib/currency";
 import { spawn } from "child_process";
 
+// ±3 days, inclusive: the observed pending→settled date drift. Dates are stored
+// at UTC midnight, so this is a 3-day range on either side of the candidate date.
+const DRIFT_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
+
+type Rule = { id: number; match: string; categoryId: number };
+
+// The per-movement decision, applied identically in the accounts loop and the
+// credit-cards loop (unified here so the ladder lives in one place):
+//   1. Exact match on (date, amount, accountId, currency) → skip.
+//   2. Fuzzy candidate: an existing transaction that existed BEFORE this sync
+//      (id ≤ maxTxId), matches (amount, accountId, currency), and whose date is
+//      within ±3 days of the movement (but not an exact date match) → the
+//      movement is a suspected date-drift duplicate. Stage it (unless already
+//      staged) and do NOT insert a real transaction.
+//   3. Else → insert the transaction.
+// Fuzzy matching uses amount + account + currency only — never description or a
+// merchant prefix. Currency stays part of identity everywhere.
+async function decideMovement(
+  m: Movement,
+  accountId: number,
+  rules: Rule[],
+  otroCategoryId: number,
+  maxTxId: number,
+): Promise<"imported" | "skipped" | "pending"> {
+  const [day, month, year] = m.date.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  const currency = toStoredCurrency(m.currency);
+
+  // 1. Exact match → skip. description is deliberately NOT part of the key: the
+  // bank's fixed-width description tail drifts (merchant city ↔ "compras") as a
+  // charge settles, so keying on it would re-import the same charge as a dupe.
+  const exact = await prisma.transaction.findFirst({
+    where: { date, amount: m.amount, accountId, currency },
+  });
+  if (exact) return "skipped";
+
+  // 2. Fuzzy candidate: same amount/account/currency, pre-sync id, date within
+  // ±3 days but not exactly equal. The id ≤ maxTxId guard is load-bearing — it
+  // stops two real same-amount charges that both arrive in THIS sync (e.g. two
+  // same-fare rides on consecutive days) from being flagged against each other.
+  const lo = new Date(date.getTime() - DRIFT_WINDOW_MS);
+  const hi = new Date(date.getTime() + DRIFT_WINDOW_MS);
+  const nearby = await prisma.transaction.findMany({
+    where: {
+      accountId,
+      amount: m.amount,
+      currency,
+      id: { lte: maxTxId },
+      date: { gte: lo, lte: hi },
+    },
+    select: { id: true, date: true },
+  });
+  // Nearest-date, lowest-id candidate for determinism (excluding an exact-date
+  // hit, which would have been an exact match above).
+  const candidate = nearby
+    .filter((c) => c.date.getTime() !== date.getTime())
+    .sort((a, b) => {
+      const da = Math.abs(a.date.getTime() - date.getTime());
+      const db = Math.abs(b.date.getTime() - date.getTime());
+      return da !== db ? da - db : a.id - b.id;
+    })[0];
+
+  if (candidate) {
+    // Already staged for this movement? Do nothing (no second pending).
+    const already = await prisma.pendingSyncTransaction.findFirst({
+      where: { date, amount: m.amount, accountId, currency },
+    });
+    if (!already) {
+      const categoryId = matchCategory(m.description, rules) ?? otroCategoryId;
+      await prisma.pendingSyncTransaction.create({
+        data: {
+          date,
+          description: m.description,
+          amount: m.amount,
+          currency,
+          accountId,
+          categoryId,
+          candidateId: candidate.id,
+        },
+      });
+    }
+    return "pending";
+  }
+
+  // 3. Insert as a real transaction.
+  const categoryId = matchCategory(m.description, rules) ?? otroCategoryId;
+  await prisma.transaction.create({
+    data: { date, description: m.description, amount: m.amount, accountId, categoryId, currency },
+  });
+  return "imported";
+}
+
 // The scraper emits an optional per-movement `currency` ("USD" for the BCI
 // "Internacional USD" tab; absent = CLP). We consume it as-is. null/absent is
 // persisted as null (CLP) so existing rows stay valid without a backfill.
@@ -80,6 +172,21 @@ export async function POST(req: NextRequest) {
 
     let importedCount = 0;
     let skippedCount = 0;
+    let pendingReviewCount = 0;
+
+    const otroCategoryId = catMap["Otro"];
+
+    // Snapshot the max existing transaction id BEFORE the import loop. The fuzzy
+    // step only matches candidates with id ≤ this marker, so rows created during
+    // this very sync can never be flagged as duplicates of each other.
+    const maxTx = await prisma.transaction.aggregate({ _max: { id: true } });
+    const maxTxId = maxTx._max.id ?? 0;
+
+    const tally = (outcome: "imported" | "skipped" | "pending") => {
+      if (outcome === "imported") importedCount++;
+      else if (outcome === "skipped") skippedCount++;
+      else pendingReviewCount++;
+    };
 
     const BANK_NAMES: Record<string, string> = {
       bestado: "BancoEstado", bchile: "Banco de Chile", santander: "Santander",
@@ -108,30 +215,7 @@ export async function POST(req: NextRequest) {
       }
 
       for (const m of acc.movements ?? []) {
-        const [day, month, year] = m.date.split("-").map(Number);
-        const date = new Date(Date.UTC(year, month - 1, day));
-
-        // Currency is part of the identity: a USD charge and a coincidentally
-        // same-amount peso charge are distinct rows. Absent = null (CLP).
-        // description is deliberately NOT part of the dedup key: the bank's
-        // fixed-width description tail is unstable — it flips between the merchant
-        // city and the movement type "compras" as a charge settles — so keying on
-        // it re-imports the same transaction as a duplicate on every sync. Dedupe
-        // on date+amount+account+currency, which is stable across that drift.
-        const currency = toStoredCurrency(m.currency);
-        const existing = await prisma.transaction.findFirst({
-          where: { date, amount: m.amount, accountId: dbAccount.id, currency },
-        });
-
-        if (existing) { skippedCount++; continue; }
-
-        const matched = matchCategory(m.description, rules);
-        const categoryId = matched ?? catMap["Otro"];
-
-        await prisma.transaction.create({
-          data: { date, description: m.description, amount: m.amount, accountId: dbAccount.id, categoryId, currency },
-        });
-        importedCount++;
+        tally(await decideMovement(m, dbAccount.id, rules, otroCategoryId, maxTxId));
       }
     }
 
@@ -150,30 +234,11 @@ export async function POST(req: NextRequest) {
       }
 
       for (const m of card.movements ?? []) {
-        const [day, month, year] = m.date.split("-").map(Number);
-        const date = new Date(Date.UTC(year, month - 1, day));
-
-        // See the accounts loop above: description is excluded from the dedup key
-        // because the bank's description tail (city ↔ "compras") drifts as a
-        // credit-card charge settles, which otherwise re-imports it as a duplicate.
-        const currency = toStoredCurrency(m.currency);
-        const existing = await prisma.transaction.findFirst({
-          where: { date, amount: m.amount, accountId: dbAccount.id, currency },
-        });
-
-        if (existing) { skippedCount++; continue; }
-
-        const matched = matchCategory(m.description, rules);
-        const categoryId = matched ?? catMap["Otro"];
-
-        await prisma.transaction.create({
-          data: { date, description: m.description, amount: m.amount, accountId: dbAccount.id, categoryId, currency },
-        });
-        importedCount++;
+        tally(await decideMovement(m, dbAccount.id, rules, otroCategoryId, maxTxId));
       }
     }
 
-    return NextResponse.json({ success: true, imported: importedCount, skipped: skippedCount, bank: result.bank });
+    return NextResponse.json({ success: true, imported: importedCount, skipped: skippedCount, pendingReview: pendingReviewCount, bank: result.bank });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Error desconocido";
     console.error("Sync error:", err);

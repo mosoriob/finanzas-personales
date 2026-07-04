@@ -17,6 +17,7 @@ model Account {
   hidden       Boolean       @default(false)
   createdAt    DateTime      @default(now())
   transactions Transaction[]
+  pendingSyncTransactions PendingSyncTransaction[]
 }
 
 model Category {
@@ -70,6 +71,34 @@ model Transaction {
   @@index([accountId])
   @@index([categoryId])
   @@index([date])
+}
+
+// A scraped movement that looks like a possible date-drift duplicate: it matches
+// an existing transaction on (amount, accountId, currency) with a date drifted
+// ≤3 days, so instead of importing it the sync stages it here for human review.
+// It is NOT a real transaction and never contributes to any aggregate until the
+// user accepts it. `candidateId` is a LOOSE integer with no foreign key — it
+// points at the existing transaction this movement might duplicate, but deleting
+// that candidate must not cascade-delete the suspect (the suspect stays
+// reviewable and acceptable on its own). `accountId` cascades on account delete.
+// The (accountId, amount, currency, date) unique index is a backstop against
+// double-queuing; note SQLite treats each NULL currency as distinct, so it does
+// NOT dedupe CLP (null-currency) rows — the application-level check in the sync
+// route is the real guard.
+model PendingSyncTransaction {
+  id          Int      @id @default(autoincrement())
+  date        DateTime
+  description String
+  amount      Int
+  currency    String?
+  accountId   Int
+  categoryId  Int
+  candidateId Int
+  account     Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@unique([accountId, amount, currency, date])
+  @@index([accountId])
 }
 
 // A suggestion the user dismissed, keyed exactly on its (match, categoryId) so
