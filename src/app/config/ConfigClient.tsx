@@ -151,79 +151,79 @@ export function ConfigClient({ accounts, categories, rules, pendingSuspects }: P
       <PendingReviewPanel suspects={pendingSuspects} />
 
       <div className="flex flex-col md:flex-row gap-6 min-h-[500px]">
-      {/* Mobile horizontal tabs — shown below md */}
-      <div className="md:hidden flex gap-2 mb-1">
-        {([
-          { tab: "bancos" as Tab, label: "Conectar banco" },
-          { tab: "cuentas" as Tab, label: "Cuentas" },
-          { tab: "categorias" as Tab, label: "Categorías" },
-          { tab: "reglas" as Tab, label: "Reglas" },
-        ]).map(({ tab, label }) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`flex-1 py-2.5 px-3 rounded-xl text-sm font-medium transition-all min-h-[44px] ${
-              activeTab === tab
-                ? "bg-indigo-50 text-indigo-500 font-semibold"
-                : "bg-white border border-gray-100 text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {/* Left sidebar — hidden on mobile */}
-      <aside className="hidden md:block w-[220px] flex-shrink-0">
-        <div className="bg-white rounded-2xl border border-gray-100 p-3 flex flex-col gap-1">
-          {(["bancos", "cuentas", "categorias", "reglas"] as Tab[]).map((tab) => {
-            const labels: Record<Tab, string> = { bancos: "Conectar banco", cuentas: "Cuentas", categorias: "Categorías", reglas: "Reglas" };
-            return (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                  activeTab === tab
-                    ? "bg-indigo-50 text-indigo-500 font-semibold"
-                    : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                }`}
-              >
-                {labels[tab]}
-              </button>
-            );
-          })}
+        {/* Mobile horizontal tabs — shown below md */}
+        <div className="md:hidden flex gap-2 mb-1">
+          {([
+            { tab: "bancos" as Tab, label: "Conectar banco" },
+            { tab: "cuentas" as Tab, label: "Cuentas" },
+            { tab: "categorias" as Tab, label: "Categorías" },
+            { tab: "reglas" as Tab, label: "Reglas" },
+          ]).map(({ tab, label }) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`flex-1 py-2.5 px-3 rounded-xl text-sm font-medium transition-all min-h-[44px] ${
+                activeTab === tab
+                  ? "bg-indigo-50 text-indigo-500 font-semibold"
+                  : "bg-white border border-gray-100 text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
-      </aside>
 
-      {/* Right panel */}
-      <div className="flex-1 min-w-0">
-        {activeTab === "bancos" ? (
-          <BancosPanel />
-        ) : activeTab === "cuentas" ? (
-          <CuentasPanel
-            accounts={accounts}
-            showForm={showAccountForm}
-            setShowForm={setShowAccountForm}
-            selectedColor={selectedColor}
-            setSelectedColor={setSelectedColor}
-            formRef={accountFormRef}
-            isPending={isPending}
-            onCreateAccount={handleCreateAccount}
-            onDeleteAccount={handleDeleteAccount}
-            onToggleVisibility={handleToggleVisibility}
-          />
-        ) : activeTab === "categorias" ? (
-          <CategoriasPanel
-            categories={categories}
-            formRef={categoryFormRef}
-            isPending={isPending}
-            onCreateCategory={handleCreateCategory}
-            onToggleExclusion={handleToggleCategoryExclusion}
-          />
-        ) : (
-          <ReglasPanel rules={rules} categories={categories} />
-        )}
-      </div>
+        {/* Left sidebar — hidden on mobile */}
+        <aside className="hidden md:block w-[220px] flex-shrink-0">
+          <div className="bg-white rounded-2xl border border-gray-100 p-3 flex flex-col gap-1">
+            {(["bancos", "cuentas", "categorias", "reglas"] as Tab[]).map((tab) => {
+              const labels: Record<Tab, string> = { bancos: "Conectar banco", cuentas: "Cuentas", categorias: "Categorías", reglas: "Reglas" };
+              return (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                    activeTab === tab
+                      ? "bg-indigo-50 text-indigo-500 font-semibold"
+                      : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                  }`}
+                >
+                  {labels[tab]}
+                </button>
+              );
+            })}
+          </div>
+        </aside>
+
+        {/* Right panel */}
+        <div className="flex-1 min-w-0">
+          {activeTab === "bancos" ? (
+            <BancosPanel />
+          ) : activeTab === "cuentas" ? (
+            <CuentasPanel
+              accounts={accounts}
+              showForm={showAccountForm}
+              setShowForm={setShowAccountForm}
+              selectedColor={selectedColor}
+              setSelectedColor={setSelectedColor}
+              formRef={accountFormRef}
+              isPending={isPending}
+              onCreateAccount={handleCreateAccount}
+              onDeleteAccount={handleDeleteAccount}
+              onToggleVisibility={handleToggleVisibility}
+            />
+          ) : activeTab === "categorias" ? (
+            <CategoriasPanel
+              categories={categories}
+              formRef={categoryFormRef}
+              isPending={isPending}
+              onCreateCategory={handleCreateCategory}
+              onToggleExclusion={handleToggleCategoryExclusion}
+            />
+          ) : (
+            <ReglasPanel rules={rules} categories={categories} />
+          )}
+        </div>
       </div>
     </div>
   );
