@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { createAccount, deleteAccount, createCategory, toggleAccountVisibility, updateCategory, toggleCategoryExclusion, createRule, updateRule, deleteRule, previewApplyRules, applyRulesToExisting, exportRules, importRules, loadRuleSuggestions, dismissSuggestion, acceptSuggestion } from "./actions";
+import { useRouter } from "next/navigation";
+import { createAccount, deleteAccount, createCategory, toggleAccountVisibility, updateCategory, toggleCategoryExclusion, createRule, updateRule, deleteRule, previewApplyRules, applyRulesToExisting, exportRules, importRules, loadRuleSuggestions, dismissSuggestion, acceptSuggestion, acceptPending, rejectPending } from "./actions";
 import type { ImportRulesResult } from "./actions";
 import type { RuleSuggestion } from "@/lib/rule-suggestions";
 import { DeleteCategoryDialog } from "@/components/DeleteCategoryDialog";
 import { EmojiPicker } from "@/components/EmojiPicker";
+import { TransactionCard } from "@/components/transaction-card";
 import { AUTO_CATEGORIZATION_NAMES } from "@/lib/constants";
 
 const BANKS = [
@@ -59,13 +61,32 @@ interface Rule {
   category: { id: number; name: string; emoji: string };
 }
 
+// A transaction shaped for TransactionCard (dates as ISO strings). Used for both
+// the staged suspect and the existing candidate it might duplicate.
+interface SuspectTransaction {
+  id: number;
+  date: string;
+  description: string;
+  amount: number;
+  currency: string | null;
+  account: { id: number; name: string };
+  category: { id: number; name: string; emoji: string };
+}
+
+export interface PendingSuspect extends SuspectTransaction {
+  // The existing transaction this movement might duplicate, or null when that
+  // candidate was deleted after the suspect was queued (still acceptable alone).
+  candidate: SuspectTransaction | null;
+}
+
 interface Props {
   accounts: Account[];
   categories: Category[];
   rules: Rule[];
+  pendingSuspects: PendingSuspect[];
 }
 
-export function ConfigClient({ accounts, categories, rules }: Props) {
+export function ConfigClient({ accounts, categories, rules, pendingSuspects }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>("bancos");
   const [selectedColor, setSelectedColor] = useState(COLOR_SWATCHES[0]);
   const [showAccountForm, setShowAccountForm] = useState(false);
@@ -124,80 +145,202 @@ export function ConfigClient({ accounts, categories, rules }: Props) {
   }
 
   return (
-    <div className="flex flex-col md:flex-row gap-6 min-h-[500px]">
-      {/* Mobile horizontal tabs — shown below md */}
-      <div className="md:hidden flex gap-2 mb-1">
-        {([
-          { tab: "bancos" as Tab, label: "Conectar banco" },
-          { tab: "cuentas" as Tab, label: "Cuentas" },
-          { tab: "categorias" as Tab, label: "Categorías" },
-          { tab: "reglas" as Tab, label: "Reglas" },
-        ]).map(({ tab, label }) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`flex-1 py-2.5 px-3 rounded-xl text-sm font-medium transition-all min-h-[44px] ${
-              activeTab === tab
-                ? "bg-indigo-50 text-indigo-500 font-semibold"
-                : "bg-white border border-gray-100 text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+    <div className="flex flex-col gap-6">
+      {/* Persistent review panel — shown above the tabs whenever there are
+          suspected duplicates queued by a sync, on any tab. */}
+      <PendingReviewPanel suspects={pendingSuspects} />
 
-      {/* Left sidebar — hidden on mobile */}
-      <aside className="hidden md:block w-[220px] flex-shrink-0">
-        <div className="bg-white rounded-2xl border border-gray-100 p-3 flex flex-col gap-1">
-          {(["bancos", "cuentas", "categorias", "reglas"] as Tab[]).map((tab) => {
-            const labels: Record<Tab, string> = { bancos: "Conectar banco", cuentas: "Cuentas", categorias: "Categorías", reglas: "Reglas" };
-            return (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                  activeTab === tab
-                    ? "bg-indigo-50 text-indigo-500 font-semibold"
-                    : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                }`}
-              >
-                {labels[tab]}
-              </button>
-            );
-          })}
+      <div className="flex flex-col md:flex-row gap-6 min-h-[500px]">
+        {/* Mobile horizontal tabs — shown below md */}
+        <div className="md:hidden flex gap-2 mb-1">
+          {([
+            { tab: "bancos" as Tab, label: "Conectar banco" },
+            { tab: "cuentas" as Tab, label: "Cuentas" },
+            { tab: "categorias" as Tab, label: "Categorías" },
+            { tab: "reglas" as Tab, label: "Reglas" },
+          ]).map(({ tab, label }) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`flex-1 py-2.5 px-3 rounded-xl text-sm font-medium transition-all min-h-[44px] ${
+                activeTab === tab
+                  ? "bg-indigo-50 text-indigo-500 font-semibold"
+                  : "bg-white border border-gray-100 text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
-      </aside>
 
-      {/* Right panel */}
-      <div className="flex-1 min-w-0">
-        {activeTab === "bancos" ? (
-          <BancosPanel />
-        ) : activeTab === "cuentas" ? (
-          <CuentasPanel
-            accounts={accounts}
-            showForm={showAccountForm}
-            setShowForm={setShowAccountForm}
-            selectedColor={selectedColor}
-            setSelectedColor={setSelectedColor}
-            formRef={accountFormRef}
-            isPending={isPending}
-            onCreateAccount={handleCreateAccount}
-            onDeleteAccount={handleDeleteAccount}
-            onToggleVisibility={handleToggleVisibility}
-          />
-        ) : activeTab === "categorias" ? (
-          <CategoriasPanel
-            categories={categories}
-            formRef={categoryFormRef}
-            isPending={isPending}
-            onCreateCategory={handleCreateCategory}
-            onToggleExclusion={handleToggleCategoryExclusion}
-          />
-        ) : (
-          <ReglasPanel rules={rules} categories={categories} />
-        )}
+        {/* Left sidebar — hidden on mobile */}
+        <aside className="hidden md:block w-[220px] flex-shrink-0">
+          <div className="bg-white rounded-2xl border border-gray-100 p-3 flex flex-col gap-1">
+            {(["bancos", "cuentas", "categorias", "reglas"] as Tab[]).map((tab) => {
+              const labels: Record<Tab, string> = { bancos: "Conectar banco", cuentas: "Cuentas", categorias: "Categorías", reglas: "Reglas" };
+              return (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                    activeTab === tab
+                      ? "bg-indigo-50 text-indigo-500 font-semibold"
+                      : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+                  }`}
+                >
+                  {labels[tab]}
+                </button>
+              );
+            })}
+          </div>
+        </aside>
+
+        {/* Right panel */}
+        <div className="flex-1 min-w-0">
+          {activeTab === "bancos" ? (
+            <BancosPanel />
+          ) : activeTab === "cuentas" ? (
+            <CuentasPanel
+              accounts={accounts}
+              showForm={showAccountForm}
+              setShowForm={setShowAccountForm}
+              selectedColor={selectedColor}
+              setSelectedColor={setSelectedColor}
+              formRef={accountFormRef}
+              isPending={isPending}
+              onCreateAccount={handleCreateAccount}
+              onDeleteAccount={handleDeleteAccount}
+              onToggleVisibility={handleToggleVisibility}
+            />
+          ) : activeTab === "categorias" ? (
+            <CategoriasPanel
+              categories={categories}
+              formRef={categoryFormRef}
+              isPending={isPending}
+              onCreateCategory={handleCreateCategory}
+              onToggleExclusion={handleToggleCategoryExclusion}
+            />
+          ) : (
+            <ReglasPanel rules={rules} categories={categories} />
+          )}
+        </div>
       </div>
+    </div>
+  );
+}
+
+/* ─── Pending duplicate-suspect review panel ─── */
+
+// Shapes a suspect/candidate view into the object TransactionCard expects.
+function toCard(t: SuspectTransaction) {
+  return {
+    id: t.id,
+    date: t.date,
+    description: t.description,
+    note: null,
+    amount: t.amount,
+    currency: t.currency,
+    familiar: null,
+    isReimbursed: false,
+    account: t.account,
+    category: t.category,
+  };
+}
+
+// Standing panel listing each suspected date-drift duplicate side-by-side with
+// the existing transaction it might duplicate. Persistent: it renders whenever
+// there are suspects (not only right after a sync). Aceptar imports the suspect
+// as a real transaction; Rechazar discards it and durably remembers the
+// rejection so the same drifted movement is silently skipped on future syncs.
+// Either server action revalidates and we refresh so the panel repopulates from
+// fresh props. A suspect whose candidate was deleted is still shown (alone) and
+// remains both acceptable and rejectable.
+function PendingReviewPanel({ suspects }: { suspects: PendingSuspect[] }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState<{ id: number; action: "accept" | "reject" } | null>(null);
+
+  if (suspects.length === 0) return null;
+
+  async function handleAccept(id: number) {
+    setBusy({ id, action: "accept" });
+    try {
+      await acceptPending(id);
+      router.refresh();
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleReject(id: number) {
+    setBusy({ id, action: "reject" });
+    try {
+      await rejectPending(id);
+      router.refresh();
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="bg-amber-50/50 rounded-2xl border border-amber-200 p-5">
+      <h2 className="text-base font-semibold text-amber-800">
+        {suspects.length}{" "}
+        {suspects.length === 1 ? "movimiento por revisar" : "movimientos por revisar"}
+      </h2>
+      <p className="text-sm text-amber-600 mt-0.5 mb-4">
+        Posibles duplicados por desfase de fecha. Revisa cada movimiento junto a la
+        transacción que podría duplicar y acéptalo para importarlo.
+      </p>
+      <ul className="flex flex-col gap-3">
+        {suspects.map((s) => {
+          const rowBusy = busy?.id === s.id;
+          return (
+            <li
+              key={s.id}
+              className="bg-white rounded-xl border border-gray-100 p-4 flex flex-col gap-3"
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1">
+                <div>
+                  <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">
+                    Movimiento nuevo
+                  </p>
+                  <TransactionCard transaction={toCard(s)} />
+                </div>
+                <div className="md:border-l md:border-gray-100 md:pl-4">
+                  <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">
+                    Posible duplicado
+                  </p>
+                  {s.candidate ? (
+                    <TransactionCard transaction={toCard(s.candidate)} />
+                  ) : (
+                    <p className="text-sm text-gray-400 py-3">
+                      La transacción original fue eliminada.
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleReject(s.id)}
+                  disabled={rowBusy}
+                  className="text-sm bg-white text-red-600 border border-red-200 rounded-xl px-5 py-2 font-semibold hover:bg-red-50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {rowBusy && busy?.action === "reject" ? "Descartando…" : "Rechazar (es duplicado)"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleAccept(s.id)}
+                  disabled={rowBusy}
+                  className="text-sm bg-indigo-500 text-white rounded-xl px-5 py-2 font-semibold hover:bg-indigo-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {rowBusy && busy?.action === "accept" ? "Importando…" : "Aceptar (importar)"}
+                </button>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
@@ -1420,6 +1563,7 @@ const SUPPORTED_BANKS = [
 ];
 
 function BancosPanel() {
+  const router = useRouter();
   const [selectedBank, setSelectedBank] = useState("");
   const [rut, setRut] = useState("");
   const [password, setPassword] = useState("");
@@ -1441,11 +1585,15 @@ function BancosPanel() {
       const data = await res.json();
 
       if (data.success) {
+        const pendingReview = data.pendingReview ?? 0;
         setStatus({
           type: "success",
-          message: `Sincronización exitosa: ${data.imported} transacciones importadas${data.skipped > 0 ? `, ${data.skipped} duplicadas omitidas` : ""}.`,
+          message: `Sincronización exitosa: ${data.imported} transacciones importadas${data.skipped > 0 ? `, ${data.skipped} duplicadas omitidas` : ""}${pendingReview > 0 ? `, ${pendingReview} por revisar` : ""}.`,
         });
         setPassword("");
+        // Sync goes through a fetch API route (not a server action), so refresh
+        // to repopulate the persistent review panel from fresh server props.
+        router.refresh();
       } else {
         setStatus({ type: "error", message: data.error || "Error desconocido" });
       }

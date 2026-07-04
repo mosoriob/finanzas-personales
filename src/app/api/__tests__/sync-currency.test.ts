@@ -46,7 +46,9 @@ vi.mock("@/lib/db", () => ({
     category: { findMany: vi.fn(), create: vi.fn() },
     rule: { findMany: vi.fn() },
     account: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
-    transaction: { findFirst: vi.fn(), create: vi.fn() },
+    transaction: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn(), aggregate: vi.fn() },
+    pendingSyncTransaction: { findFirst: vi.fn(), create: vi.fn() },
+    rejectedDuplicate: { findFirst: vi.fn() },
   },
 }));
 
@@ -57,7 +59,11 @@ const mockCategoryFindMany = prisma.category.findMany as ReturnType<typeof vi.fn
 const mockRuleFindMany = prisma.rule.findMany as ReturnType<typeof vi.fn>;
 const mockAccountFindFirst = prisma.account.findFirst as ReturnType<typeof vi.fn>;
 const mockTxFindFirst = prisma.transaction.findFirst as ReturnType<typeof vi.fn>;
+const mockTxFindMany = prisma.transaction.findMany as ReturnType<typeof vi.fn>;
 const mockTxCreate = prisma.transaction.create as ReturnType<typeof vi.fn>;
+const mockTxAggregate = prisma.transaction.aggregate as ReturnType<typeof vi.fn>;
+const mockPendingFindFirst = prisma.pendingSyncTransaction.findFirst as ReturnType<typeof vi.fn>;
+const mockRejectedFindFirst = prisma.rejectedDuplicate.findFirst as ReturnType<typeof vi.fn>;
 
 function makeRequest() {
   return {
@@ -72,6 +78,13 @@ beforeEach(() => {
   mockRuleFindMany.mockResolvedValue([]);
   // Reuse one existing credit-card account so no account create is needed.
   mockAccountFindFirst.mockResolvedValue({ id: 10, name: "Tarjeta", bank: "BCI", balance: 0 });
+  // Defaults for the fuzzy-duplicate ladder: no pre-sync rows, no nearby
+  // candidates, nothing already staged — so these currency tests exercise only
+  // the exact-match/insert paths, unchanged by the suspect feature.
+  mockTxAggregate.mockResolvedValue({ _max: { id: 0 } });
+  mockTxFindMany.mockResolvedValue([]);
+  mockPendingFindFirst.mockResolvedValue(null);
+  mockRejectedFindFirst.mockResolvedValue(null);
 });
 
 describe("sync route — currency threading", () => {
