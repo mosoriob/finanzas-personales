@@ -679,6 +679,18 @@ describe("acceptPending", () => {
     expect(mockPrisma.transaction.create).not.toHaveBeenCalled();
     expect(mockPrisma.pendingSyncTransaction.delete).toHaveBeenCalledWith({ where: { id: 7 } });
   });
+
+  it("is a harmless no-op when the pending has already vanished", async () => {
+    // Double-click / concurrent accept: the pending is already gone. Accepting
+    // must neither insert a transaction nor attempt a delete.
+    mockPrisma.pendingSyncTransaction.findUnique.mockResolvedValue(null);
+
+    const result = await acceptPending(7);
+    expect(result).toEqual({ ok: true });
+
+    expect(mockPrisma.transaction.create).not.toHaveBeenCalled();
+    expect(mockPrisma.pendingSyncTransaction.delete).not.toHaveBeenCalled();
+  });
 });
 
 // ─── rejectPending ───
